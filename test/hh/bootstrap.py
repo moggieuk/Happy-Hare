@@ -105,8 +105,13 @@ class Session:
 
     def __init__(self, profile='boxturtle', adc_api='new', adc_payload='samples',
                  strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False,
-                 log_dir=None, klipper_aio=True, kalico=False, old_klipper=False):
+                 log_dir=None, klipper_aio=True, kalico=False, old_klipper=False,
+                 config_edit=None):
         self.klippy = install()
+        # Called with the assembled RawConfigParser before any object is built, to make the
+        # hand edits a user would make to the rendered config (sections the installer has
+        # no menu for)
+        self.config_edit = config_edit
         self.profile = (profile if isinstance(profile, profiles_mod.Profile)
                         else profiles_mod.get(profile))
         self.adc_api = adc_api
@@ -288,6 +293,8 @@ class Session:
         # stub value would be silently overridden by the real
         # ~/printer_data/config/mmu/mmu_vars.cfg path.
         self.fileconfig.set('save_variables', 'filename', self._mmu_vars_copy())
+        if self.config_edit is not None:
+            self.config_edit(self.fileconfig)
         pconfig = configfile.PrinterConfig(printer)
         printer.add_object('configfile', pconfig)
         self.config = configfile.ConfigWrapper(printer, self.fileconfig, {}, '')

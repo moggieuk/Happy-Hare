@@ -526,6 +526,7 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_encoder specified")
             self.calibrator.mark_calibrated(CALIBRATED_ENCODER)
+        self._check_encoder_capabilities(config)
 
         # Load optional sync-feedback mmu_buffer (can be a shared buffer so check for existence first)
         self.buffer = None
@@ -758,6 +759,46 @@ class MmuUnit:
 
     def has_encoder(self):
         return self.encoder is not None
+
+
+    # The encoder as a homing endstop, which an encoder whose counts arrive late can't do well
+    ENCODER_HOMING_PARAMS = ('gate_homing_endstop', 'gate_preload_endstop', 'extruder_homing_endstop')
+
+    def _check_encoder_capabilities(self, config):
+        """
+        Uses the encoder's counter backend doesn't support (an analog one: its counts arrive
+        after the move) are opt-in: off by default, honoured with a warning when set explicitly
+        in [mmu_unit_parameters]. Only a default that would use one unasked stops the start.
+        """
+        encoder = self.encoder
+        if encoder is None or (encoder.supports_homing() and encoder.supports_move_validation()):
+            return
+        params = config.getsection('mmu_unit_parameters %s' % self.name)
+        def explicit(name):
+            return params.fileconfig.has_option(params.get_name(), name)
+        late = "its counts arrive up to %.2fs after the move" % encoder.report_latency()
+
+        if not encoder.supports_move_validation():
+            if not explicit('encoder_move_validation'):
+                self.p.encoder_move_validation = 0
+            elif self.p.encoder_move_validation:
+                logging.warning(
+                    "MMU: [%s] encoder_move_validation: 1 with analog [mmu_encoder %s]: %s, "
+                    "so a move may be judged short" % (params.get_name(), encoder.name, late))
+
+        if not encoder.supports_homing():
+            for name in self.ENCODER_HOMING_PARAMS:
+                if getattr(self.p, name) != SENSOR_ENCODER:
+                    continue
+                if not explicit(name):
+                    raise config.error(
+                        "[%s] %s defaults to '%s', but [mmu_encoder %s] is analog (%s). Set %s "
+                        "to another endstop, or to '%s' to home on it anyway"
+                        % (params.get_name(), name, SENSOR_ENCODER, encoder.name, late, name,
+                           SENSOR_ENCODER))
+                logging.warning(
+                    "MMU: [%s] %s: %s with analog [mmu_encoder %s]: %s, so homing stops late"
+                    % (params.get_name(), name, SENSOR_ENCODER, encoder.name, late))
 
     def has_espooler(self):
         return self.espooler is not None

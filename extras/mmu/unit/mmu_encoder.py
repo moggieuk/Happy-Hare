@@ -19,6 +19,7 @@ from ... import pulse_counter
 # Happy Hare imports
 from ..mmu_constants    import *
 from ..mmu_sensor_utils import MmuVirtualEndstopSensor
+from .mmu_analog_counter import MmuAnalogCounter
 
 CHECK_MOVEMENT_TIMEOUT = 0.250
 
@@ -36,7 +37,11 @@ class MmuEncoder:
         self.active_mmu_unit = None
         self.extruder = None
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
-        encoder_pin = config.get('encoder_pin')
+        # A digital encoder_pin counted on the MCU, or an analog_pin sampled on the host
+        analog_pin = config.get('analog_pin', None)
+        if analog_pin and config.get('encoder_pin', None):
+            raise config.error("[%s] sets both encoder_pin and analog_pin: use one" % config.get_name())
+        encoder_pin = None if analog_pin else config.get('encoder_pin')
 
         # For measurement/counter functionality...
         sample_time = config.getfloat('sample_time', 0.1, above=0.)  # How often Klippy receives accumulated counts
@@ -50,8 +55,12 @@ class MmuEncoder:
         self._last_count_time = None          # Last time counts were received from MCU
         self._counts = self._last_count = 0
         self._movement = False
-        counter = pulse_counter.MCU_counter(self.printer, encoder_pin, sample_time, poll_time)
-        counter.setup_callback(self._counter_callback)
+        if analog_pin:
+            self.counter = MmuAnalogCounter(config, analog_pin)
+        else:
+            self.counter = pulse_counter.MCU_counter(self.printer, encoder_pin, sample_time, poll_time)
+        self.counter.setup_callback(self._counter_callback)
+        self._last_report_time = 0.           # Print time of the latest counter report
 
         # For FlowGuard runout/clog/tangle functionality...
         self.active = False                   # Active only while in a print
@@ -98,6 +107,62 @@ class MmuEncoder:
 
     def add_unit(self, mmu_unit):
         self.connected_units.append(mmu_unit)
+
+
+# -----------------------------------------------------------------------------
+# Capabilities of the counter backend
+# -----------------------------------------------------------------------------
+
+    def is_analog(self):
+        return isinstance(self.counter, MmuAnalogCounter)
+
+
+    def supports_homing(self):
+        """
+        Can a move stop on (or be judged by) this encoder while it is still running? Not an
+        analog one: its counts reach the host up to report_latency() after the movement.
+        """
+        return not self.is_analog()
+
+
+    def supports_move_validation(self):
+        """
+        Can a move be checked against this encoder straight after it completes? An analog
+        encoder's counts are only complete once wait_for_counts() has run, and the validation
+        paths read the encoder without it.
+        """
+        return not self.is_analog()
+
+
+    def report_latency(self):
+        """Longest time (s) between a movement and its counts reaching the host."""
+        if self.is_analog():
+            return self.counter.report_latency()
+        return 0.
+
+
+    def max_speed(self):
+        """Fastest filament speed (mm/s) this encoder can follow, or None when not limited."""
+        if self.is_analog():
+            return self.counter.max_speed(self.resolution)
+        return None
+
+
+    def wait_for_counts(self):
+        """
+        Block until the counter has reported samples taken after this call, so every pulse from
+        movement that has already finished is in get_distance(). Movement queued after the call
+        can't be credited to a reading taken before it, and a reset made after it can't be
+        undone by late counts. A no-op for an MCU counter, which reports in time for the dwell.
+        """
+        if not self.is_analog():
+            return
+        mcu = self.printer.lookup_object('mcu')
+        now = self.reactor.monotonic()
+        target = mcu.estimated_print_time(now)
+        deadline = now + self.report_latency() + 0.5
+        while self._last_report_time < target and now < deadline:
+            now = self.reactor.pause(now + self.counter.report_time)
 
 
     def handle_connect(self):
@@ -423,6 +488,7 @@ class MmuEncoder:
 
     # Callback for MCU_counter
     def _counter_callback(self, print_time, count, count_time):
+        self._last_report_time = max(self._last_report_time, print_time)
         if self._last_count_time is None:
             self._last_count_time = print_time
             self._last_count = count
@@ -477,5 +543,8 @@ class MmuEncoder:
                 'desired_headroom': round(self.desired_headroom, 1),
                 'detection_mode': self.detection_mode,
                 'enabled': self._flowguard_enabled,
-                'flow_rate': int(round(min(self.extrusion_flowrate, 1.) * 100))
+                'flow_rate': int(round(min(self.extrusion_flowrate, 1.) * 100)),
+                **({'analog': dict(self.counter.get_status(eventtime),
+                                   max_speed=round(self.max_speed(), 1))}
+                   if self.is_analog() else {}),
         }
