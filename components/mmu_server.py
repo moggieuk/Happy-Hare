@@ -10,7 +10,7 @@
 # Copyright (C) 2026  WoodWorker
 #
 # RFID Spool auto-create
-# Copyright (C) 2026 lameandboard#
+# Copyright (C) 2026 lameandboard
 #
 # Orcaslicer Color Mixing Support
 # Copyright (C) 2026 lanpartyceo <@kaemar (discord)>
