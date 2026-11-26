@@ -1298,7 +1298,7 @@ _TIGERTAG_UNITS: dict[int, str] = {
 # END TigerTag registry tables
 
 # Moonraker (mmu_server) keeps copies of TigerTag's registry tables in
-# config/mmu/optional/tigertag when nfc_tigertag_registry is on. Klipper loads them once at
+# mmu/optional/tigertag (beside Klipper's config file) when nfc_tigertag_registry is on. Klipper loads them once at
 # startup (mmu_controller.handle_ready). They only ADD IDs: a name the built-in tables
 # already have is never replaced, so a gate's MATERIAL can't change between releases.
 # Which tables, and what a row must satisfy, is defined once in tigertag_registry.

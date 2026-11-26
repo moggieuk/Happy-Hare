@@ -16,6 +16,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import os
 from collections import namedtuple
 
 REGISTRY_URL = "https://raw.githubusercontent.com/TigerTag-Project/TigerTag-RFID-Guide/main/database"
@@ -63,6 +64,17 @@ KEEP_MATERIAL_NAMES = {
     56527: "PEI",       # TigerTag: PEI-1010
     57469: "PETG-HF",   # TigerTag: PETG HF
 }
+
+
+def cache_dir(config_file):
+    """mmu/optional/tigertag beside Klipper's active config file, where the installer puts mmu/.
+    None unless the path is absolute: Klipper and Moonraker would resolve a relative one differently"""
+    if not isinstance(config_file, str) or not config_file:
+        return None
+    path = os.path.expanduser(config_file)
+    if not os.path.isabs(path):
+        return None
+    return os.path.join(os.path.dirname(os.path.realpath(path)), "mmu", "optional", "tigertag")
 
 
 def name_ok(name) -> bool:

@@ -100,8 +100,8 @@ SPOOLMANDB_MATERIALS_URL = "https://donkie.github.io/SpoolmanDB/materials.json"
 SPOOLMANDB_BAMBU_URL     = "https://donkie.github.io/SpoolmanDB/filaments/bambulab.json"
 
 # TigerTag's registry (CC0). With nfc_tigertag_registry on (one printer-wide setting), copies of its ID
-# tables are kept in config/mmu/optional/tigertag, which Klipper adds to its built-in tables at
-# startup (tag_parser.load_tigertag_registry). Which tables, from where, and what a row must
+# tables are kept in mmu/optional/tigertag beside Klipper's config file, which Klipper adds to its
+# built-in tables at startup (tag_parser.load_tigertag_registry). Which tables, from where, and what a row must
 # satisfy is defined once in the schema module shared with the parser and the table generator.
 # It lives in the Klipper tree, so it is loaded by path from this file's real (linked) location
 TIGERTAG_SCHEMA = os.path.join("extras", "mmu", "unit", "nfc", "tigertag_registry.py")
@@ -230,6 +230,9 @@ class MmuServer:
         self.update_location = self.config.getboolean("update_spoolman_location", True)
         self._tigertag_task = None # Runs while nfc_tigertag_registry is on
         self._tigertag_schema = None
+        self._tigertag_wanted = False
+        self._tigertag_dir = None
+        self.server.register_event_handler("server:klippy_identified", self._update_tigertag_dir)
         self.server.register_event_handler("server:klippy_ready", self._handle_klippy_ready)
 
 
@@ -253,6 +256,7 @@ class MmuServer:
         options = config.get('mmu_parameters')
         wanted = isinstance(options, dict) and \
             str(options.get('nfc_tigertag_registry', '0')).strip().lower() in ('1', 'true', 'yes')
+        self._tigertag_wanted = wanted
         self._set_tigertag_registry(wanted)
         if not wanted and isinstance(options, dict):
             # Only on Klipper's word that it is off: an unreadable config, or no Happy Hare
@@ -264,22 +268,40 @@ class MmuServer:
             logging.debug(f"TigerTag registry: couldn't save the setting: {str(e)}")
 
 
+    async def _update_tigertag_dir(self):
+        '''The cache follows Klipper's active config file, as file_manager._update_fixed_paths does.
+        Nothing is downloaded until Klipper has reported it. On a change, the old copies are
+        deleted and the download restarts'''
+        schema = self._load_tigertag_schema()
+        new_dir = schema.cache_dir((self.server.get_klippy_info() or {}).get('config_file')) if schema else None
+        old_dir = self._tigertag_dir
+        if new_dir is None or new_dir == old_dir:
+            return
+        self._set_tigertag_registry(False) # Stop writing to the old folder
+        if old_dir is not None:
+            self._remove_tigertag_cache(old_dir, why="Klipper's config moved")
+        self._tigertag_dir = new_dir
+        if new_dir is not None:
+            logging.info(f"TigerTag registry: using {new_dir}")
+        self._set_tigertag_registry(self._tigertag_wanted) # A fresh loop downloads straight away
+
+
     def _set_tigertag_registry(self, wanted):
-        if wanted and self._tigertag_task is None:
+        if wanted and self._tigertag_task is None and self._tigertag_dir is not None:
             self._tigertag_task = asyncio.create_task(self._tigertag_registry_loop())
         elif not wanted and self._tigertag_task is not None:
             self._tigertag_task.cancel()
             self._tigertag_task = None
 
 
-    def _remove_tigertag_cache(self):
+    def _remove_tigertag_cache(self, cache_dir=None, why="turned off"):
         '''
         Delete the downloaded copies when the option is turned off, so nothing is left for
         Klipper to load and the folder doesn't sit there stale. Only the files the download
         writes are removed (tables, stamps, README and any interrupted .tmp), then the folder
         if that empties it: anything else someone put there is left alone
         '''
-        cache_dir = self._tigertag_cache_dir()
+        cache_dir = cache_dir or self._tigertag_cache_dir()
         if not cache_dir or not os.path.isdir(cache_dir):
             return
         schema = self._load_tigertag_schema()
@@ -296,26 +318,16 @@ class MmuServer:
                     logging.warning(f"TigerTag registry: couldn't delete {name}: {str(e)}")
         try:
             os.rmdir(cache_dir)
-            logging.info(f"TigerTag registry: turned off, deleted {cache_dir}")
+            logging.info(f"TigerTag registry: {why}, deleted {cache_dir}")
         except OSError:
             if removed:
-                logging.info(f"TigerTag registry: turned off, deleted the downloaded files in {cache_dir}"
+                logging.info(f"TigerTag registry: {why}, deleted the downloaded files in {cache_dir}"
                              " (other files there were kept)")
 
 
     def _tigertag_cache_dir(self) -> str | None:
-        '''config/mmu/optional/tigertag in the printer's config directory'''
-        config_dir = None
-        file_manager = self.server.lookup_component('file_manager', None)
-        if file_manager is not None:
-            try:
-                config_dir = file_manager.get_directory('config')
-            except Exception:
-                config_dir = None
-        if not config_dir:
-            data_path = self.server.get_app_args().get('data_path')
-            config_dir = os.path.join(data_path, 'config') if data_path else None
-        return os.path.join(config_dir, 'mmu', 'optional', 'tigertag') if config_dir else None
+        '''The cache folder for Klipper's active config file; None until Klipper has reported it'''
+        return self._tigertag_dir
 
 
     def _load_tigertag_schema(self):
@@ -450,11 +462,10 @@ class MmuServer:
 
 
     async def component_init(self) -> None:
-        # The switch is Klipper's, but Moonraker needn't wait for Klipper: act on the last value
-        # seen, so the tables are usually fresh before Klipper loads them. Klipper ready corrects it
+        # The switch is Klipper's, but remember the last value seen: the download can then start
+        # when Klipper identifies (its folder known), without waiting for ready. Ready corrects it
         try:
-            if await self.database.get_item(TIGERTAG_DB_NAMESPACE, TIGERTAG_DB_KEY, False):
-                self._set_tigertag_registry(True)
+            self._tigertag_wanted = bool(await self.database.get_item(TIGERTAG_DB_NAMESPACE, TIGERTAG_DB_KEY, False))
         except Exception as e:
             logging.debug(f"TigerTag registry: couldn't read the last setting: {str(e)}")
 

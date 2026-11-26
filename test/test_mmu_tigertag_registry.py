@@ -215,6 +215,14 @@ class TestSwitch(unittest.TestCase):
         self.hh = harness()
         self.server = self.hh.mmu_server
         self.addCleanup(self.hh.close)
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.hh.http.tigertag = json.loads(json.dumps(REGISTRY))
+        self.klipper_identified()
+
+    def klipper_identified(self):
+        self.server.server.klippy_info = {'config_file': os.path.join(self.tmp, 'printer.cfg')}
+        self.hh.run(self.server._update_tigertag_dir())
 
     def klipper_ready(self, value=None, units=None):
         """Klipper's config as Moonraker sees it: [mmu_parameters] with the switch (omitted if
@@ -257,29 +265,37 @@ class TestSwitch(unittest.TestCase):
         self.assertIs(self.server._tigertag_task, task)
 
     def moonraker_restart(self):
-        """Same database, new Moonraker process: Klipper isn't ready yet"""
+        """Same database, new Moonraker process: Klipper hasn't identified yet"""
         if self.server._tigertag_task is not None:
             self.hh.run(self.server.close())
+        self.server._tigertag_dir = None
+        self.server._tigertag_wanted = False
         self.hh.run(self.server.component_init())
 
-    def test_restart_starts_before_klipper_when_last_seen_on(self):
+    def test_restart_waits_for_klipper_to_identify(self):
+        """Last seen on: it doesn't download until Klipper reports its config file..."""
         self.klipper_ready('1')
         self.moonraker_restart()
-        self.assertIsNotNone(self.server._tigertag_task, 'downloading without waiting for Klipper')
+        self.assertIsNone(self.server._tigertag_task, 'no folder yet, so nowhere to write')
+        self.klipper_identified()
+        self.assertIsNotNone(self.server._tigertag_task, '...then starts without waiting for ready')
 
     def test_restart_stays_off_when_last_seen_off(self):
         self.klipper_ready('1')
         self.klipper_ready('0')
         self.moonraker_restart()
+        self.klipper_identified()
         self.assertIsNone(self.server._tigertag_task)
 
     def test_first_ever_start_waits_for_klipper(self):
         self.moonraker_restart()
+        self.klipper_identified()
         self.assertIsNone(self.server._tigertag_task)
 
     def test_klipper_corrects_a_stale_setting(self):
         self.klipper_ready('1')
-        self.moonraker_restart()                 # starts from the remembered value...
+        self.moonraker_restart()
+        self.klipper_identified()          # starts from the remembered value...
         self.klipper_ready('0')            # ...then Klipper says it was turned off
         self.assertIsNone(self.server._tigertag_task)
 
@@ -287,6 +303,166 @@ class TestSwitch(unittest.TestCase):
         self.klipper_ready('1')
         self.hh.run(self.server.close())
         self.assertIsNone(self.server._tigertag_task)
+
+
+class TestCacheFollowsKlipperConfig(unittest.TestCase):
+    """The cache goes beside Klipper's active config file, which may be in a subfolder of the
+    config root. Moonraker only learns it when Klipper identifies; it never guesses."""
+
+    def setUp(self):
+        self.hh = harness()
+        self.addCleanup(self.hh.close)
+        self.server = self.hh.mmu_server
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.hh.http.tigertag = json.loads(json.dumps(REGISTRY))
+
+    def cache(self, *sub):
+        return os.path.join(self.tmp, 'config', *sub, 'mmu', 'optional', 'tigertag')
+
+    def has_tables(self, cache_dir):
+        return os.path.isfile(os.path.join(cache_dir, 'id_brand.json'))
+
+    def klipper_identified(self, *sub):
+        self.server.server.klippy_info = {'config_file': os.path.join(self.tmp, 'config', *sub, 'printer.cfg')}
+        self.hh.run(self.server._update_tigertag_dir())
+
+    def klipper_ready(self, value):
+        self.hh.klippy.config_sections = {'mmu_parameters': {'nfc_tigertag_registry': value}}
+        self.hh.run(self.server._handle_klippy_ready())
+
+    def settle(self):
+        """Let a just-started download loop run its first refresh (it then sleeps)"""
+        import asyncio
+        for _ in range(3):
+            self.hh.run(asyncio.sleep(0))
+
+    def test_config_in_a_subfolder_downloads_beside_it(self):
+        self.klipper_identified('machine')
+        self.klipper_ready('1')
+        self.settle()
+        self.assertTrue(self.has_tables(self.cache('machine')))
+        self.assertFalse(os.path.exists(self.cache()), 'nothing under the config root')
+
+    def test_standard_layout(self):
+        self.klipper_identified()
+        self.klipper_ready('1')
+        self.settle()
+        self.assertTrue(self.has_tables(self.cache()))
+
+    def test_nothing_is_downloaded_before_klipper_identifies(self):
+        """No config-root fallback: until Klipper says where, there is nowhere to write"""
+        self.klipper_ready('1')
+        self.settle()
+        self.assertIsNone(self.server._tigertag_task)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'config')))
+
+    def test_no_config_file_reported_changes_nothing(self):
+        self.klipper_identified('machine')
+        self.server.server.klippy_info = {}
+        self.hh.run(self.server._update_tigertag_dir())
+        self.assertEqual(self.server._tigertag_cache_dir(), self.cache('machine'))
+
+    def test_unchanged_folder_keeps_the_job_and_the_files(self):
+        self.klipper_identified('machine')
+        self.klipper_ready('1')
+        self.settle()
+        task = self.server._tigertag_task
+        self.klipper_identified('machine')          # A Klipper RESTART
+        self.assertIs(self.server._tigertag_task, task, 'no re-check of GitHub on every restart')
+        self.assertTrue(self.has_tables(self.cache('machine')))
+
+    def test_moved_config_moves_the_download(self):
+        self.klipper_identified()
+        self.klipper_ready('1')
+        self.settle()
+        task = self.server._tigertag_task
+        self.klipper_identified('machine')          # Klipper restarted with config/machine/printer.cfg
+        self.assertIsNot(self.server._tigertag_task, task, 'the download starts again at once')
+        self.settle()
+        self.assertTrue(self.has_tables(self.cache('machine')))
+        self.assertFalse(os.path.exists(self.cache()), 'the old copies are deleted')
+
+    def test_move_keeps_files_it_did_not_write(self):
+        self.klipper_identified()
+        self.klipper_ready('1')
+        self.settle()
+        with open(os.path.join(self.cache(), 'my notes.txt'), 'w') as f:
+            f.write('mine')
+        self.klipper_identified('machine')
+        self.assertEqual(os.listdir(self.cache()), ['my notes.txt'])
+
+    def test_turned_off_after_a_move_deletes_the_current_folder(self):
+        self.klipper_identified()
+        self.klipper_ready('1')
+        self.settle()
+        self.klipper_identified('machine')
+        self.settle()
+        self.klipper_ready('0')
+        self.assertFalse(os.path.exists(self.cache('machine')))
+        self.assertFalse(os.path.exists(self.cache()))
+
+    def test_moonraker_restart_keeps_no_path(self):
+        """Only the switch is remembered: the folder is learned again from Klipper"""
+        self.klipper_identified('machine')
+        self.klipper_ready('1')
+        self.hh.run(self.server.close())
+        self.server._tigertag_dir = None
+        self.server._tigertag_wanted = False
+        self.hh.run(self.server.component_init())
+        self.assertIsNone(self.server._tigertag_cache_dir())
+        self.assertIsNone(self.server._tigertag_task)
+        self.klipper_identified('machine')
+        self.assertIsNotNone(self.server._tigertag_task)
+
+
+class TestCacheDir(unittest.TestCase):
+    """tigertag_registry.cache_dir: the one rule both Klipper and Moonraker use."""
+
+    @classmethod
+    def setUpClass(cls):
+        from test.hh import install
+        install()
+        from extras.mmu.unit.nfc import tigertag_registry
+        cls.reg = tigertag_registry
+
+    def setUp(self):
+        self.tmp = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_beside_the_config_file(self):
+        cfg = os.path.join(self.tmp, 'machine', 'printer.cfg')
+        self.assertEqual(self.reg.cache_dir(cfg), os.path.join(self.tmp, 'machine', 'mmu', 'optional', 'tigertag'))
+
+    def test_relative_path_is_refused(self):
+        """Klipper and Moonraker run from different working folders"""
+        self.assertIsNone(self.reg.cache_dir('printer.cfg'))
+        self.assertIsNone(self.reg.cache_dir('config/printer.cfg'))
+
+    def test_nothing_is_refused(self):
+        for value in (None, '', 42):
+            self.assertIsNone(self.reg.cache_dir(value), value)
+
+    def test_home_is_expanded(self):
+        self.assertEqual(self.reg.cache_dir('~/printer_data/config/printer.cfg'),
+                         self.reg.cache_dir(os.path.expanduser('~/printer_data/config/printer.cfg')))
+
+    def test_symlinked_config_resolves_to_its_real_folder(self):
+        real = os.path.join(self.tmp, 'real')
+        os.makedirs(real)
+        open(os.path.join(real, 'printer.cfg'), 'w').close()
+        os.symlink(real, os.path.join(self.tmp, 'link'))
+        self.assertEqual(self.reg.cache_dir(os.path.join(self.tmp, 'link', 'printer.cfg')),
+                         os.path.join(real, 'mmu', 'optional', 'tigertag'))
+
+    def test_moonraker_uses_the_same_rule(self):
+        """Moonraker's copy is loaded by path; it must be this function, not a lookalike"""
+        hh = harness()
+        self.addCleanup(hh.close)
+        cfg = os.path.join(self.tmp, 'machine', 'printer.cfg')
+        hh.mmu_server.server.klippy_info = {'config_file': cfg}
+        hh.run(hh.mmu_server._update_tigertag_dir())
+        self.assertEqual(hh.mmu_server._tigertag_cache_dir(), self.reg.cache_dir(cfg))
 
 
 class TestOneSchema(unittest.TestCase):

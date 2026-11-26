@@ -421,6 +421,7 @@ class FakeServer:
         self.remote_methods = {}    # name -> handler
         self.events = []            # [(name, payload)] every send_event
         self.warnings = []
+        self.klippy_info = {}       # Klipper's 'info' as Moonraker caches it (config_file etc.)
 
     def get_host_info(self):
         return {'hostname': self.hostname, 'address': '127.0.0.1', 'port': 7125}
@@ -452,6 +453,9 @@ class FakeServer:
 
     def get_app_args(self):
         return {'software_version': 'v0.9.3-harness'}
+
+    def get_klippy_info(self):
+        return self.klippy_info
 
     def is_running(self):
         return True

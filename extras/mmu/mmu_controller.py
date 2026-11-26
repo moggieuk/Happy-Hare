@@ -4402,11 +4402,10 @@ class MmuController(MmuFilamentMovement):
         tag_parser.reset_tigertag_registry()
         if not self.p.nfc_tigertag_registry:
             return
-        config_file = self.printer.get_start_args().get('config_file')
-        if not config_file:
+        cache_dir = tigertag_registry.cache_dir(self.printer.get_start_args().get('config_file'))
+        if not cache_dir:
             return
         import os
-        cache_dir = os.path.join(os.path.dirname(config_file), 'mmu', 'optional', 'tigertag')
         found = sum(os.path.isfile(os.path.join(cache_dir, t.file + ".json")) for t in tigertag_registry.TABLES)
         if not found:
             self.log_to_file("TigerTag registry: no downloaded tables in %s yet, using the built-in tables" % cache_dir, prefix='')
