@@ -151,6 +151,7 @@ class MmuController(MmuFilamentMovement):
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
         self.printer.register_event_handler('mmu:unit_selected', self._handle_unit_selected)
+        self.printer.register_event_handler('mmu:gate_selected', self._handle_gate_selected)
 
 
     def reinit(self):
@@ -783,7 +784,7 @@ class MmuController(MmuFilamentMovement):
             gate = self.gate_selected
         mmu_unit = self.mmu_unit(gate)
         if mmu_unit:
-            return mmu_unit.encoder
+            return mmu_unit.encoder_for(gate)
         return None
 
 
@@ -2964,6 +2965,12 @@ class MmuController(MmuFilamentMovement):
         # Selecting a unit changes which unit FlowGuard belongs to, not whether monitoring
         # is on, so re-scope it even when nothing else about monitoring changed
         self._apply_flowguard_scope()
+
+
+    def _handle_gate_selected(self, gate, prev_gate):
+        # With an encoder per gate the selected gate's wheel is the one to watch
+        if len(self.mmu_unit().encoders) > 1:
+            self._apply_flowguard_scope()
 
 
     def _apply_flowguard_scope(self, eventtime=None):

@@ -358,13 +358,14 @@ class MmuSensor:
         insert_remove_in_print=False,
         button_handler=None,
         register=True,
+        short_name=True,
     ):
         self.printer = config.get_printer()
         name = self.name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
         self.registration_name = name
 
         # Simple way to shorten the Mailsail/Fluidd displayed names if only a single mmu unit
-        if register and len(config.getsection('mmu_machine').getlist('units')) == 1:
+        if register and short_name and len(config.getsection('mmu_machine').getlist('units')) == 1:
             self.registration_name = name.split(':', 1)[-1]
 
         gate_arg = (" GATE=%d" % gate) if gate is not None else ""

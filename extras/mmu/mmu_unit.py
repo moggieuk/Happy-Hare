@@ -507,22 +507,37 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_leds specified")
 
-        # Load optional mmu_encoder (can be a shared encoder so check for existence first)
-        self.encoder = None
-        encoder_name = config.get('encoder', None)
-        if encoder_name:
-            section = 'mmu_encoder %s' % encoder_name
-            self.encoder = self.printer.lookup_object(section, None)
-            if not self.encoder:
-                if config.has_section(section):
-                    c = config.getsection(section)
-                    self.encoder = MmuEncoder(c, self, self.p)
-                    self.printer.add_object(c.get_name(), self.encoder) # Must register
-                    logging.info("MMU: Created: [%s]" % c.get_name())
-                else:
-                    raise config.error("Encoder section [%s] not found!" % section)
-            else:
-                self.encoder.add_unit(self)
+        # Load optional mmu_encoder(s). 'encoder' names one encoder that every gate shares (which
+        # may itself be shared with another unit, so check for existence first), or one encoder
+        # per gate for a unit with a wheel on each. Each physical encoder is one MmuEncoder with
+        # its own resolution, calibration and measurement state; gates sharing one physical
+        # encoder reference the same object
+        self.encoders = []              # Distinct encoders, in gate order
+        self.encoders_by_gate = []      # Local gate -> MmuEncoder (or empty without an encoder)
+        encoder_names = config.getlist('encoder', None)
+        if encoder_names:
+            if len(encoder_names) not in (1, self.num_gates):
+                raise config.error(
+                    "[%s] encoder: name one encoder for every gate, or one per gate (%d), not %d"
+                    % (config.get_name(), self.num_gates, len(encoder_names)))
+            for encoder_name in encoder_names:
+                section = 'mmu_encoder %s' % encoder_name
+                encoder = self.printer.lookup_object(section, None)
+                if not encoder:
+                    if config.has_section(section):
+                        c = config.getsection(section)
+                        encoder = MmuEncoder(c, self, self.p)
+                        self.printer.add_object(c.get_name(), encoder) # Must register
+                        logging.info("MMU: Created: [%s]" % c.get_name())
+                    else:
+                        raise config.error("Encoder section [%s] not found!" % section)
+                elif encoder not in self.encoders:
+                    encoder.add_unit(self)
+                if encoder not in self.encoders:
+                    self.encoders.append(encoder)
+                self.encoders_by_gate.append(encoder)
+            if len(encoder_names) == 1:
+                self.encoders_by_gate *= self.num_gates
         else:
             logging.info("MMU: - No mmu_encoder specified")
             self.calibrator.mark_calibrated(CALIBRATED_ENCODER)
@@ -574,7 +589,7 @@ class MmuUnit:
             self.sensors,
             self.espooler,
             self.leds,
-            self.encoder,
+            *self.encoders,
             self.buffer,
             self.sync_feedback,
             self.environment_manager,
@@ -606,7 +621,7 @@ class MmuUnit:
                     [self.sensors.shared_exit_sensor],
                     [self.buffer.compression_sensor] if self.buffer else [],
                     [self.buffer.tension_sensor] if self.buffer else [],
-                    [self.encoder.endstop_sensor] if self.encoder else [],
+                    [encoder.endstop_sensor for encoder in self.encoders],
                     (self.toolhead_wrapper.sensors or {}).values(),
                 )
 
@@ -758,7 +773,32 @@ class MmuUnit:
         return self.buffer is not None
 
     def has_encoder(self):
-        return self.encoder is not None
+        return bool(self.encoders)
+
+
+    def encoder_for(self, gate):
+        """The encoder that measures 'gate' (a global gate of this unit), or None."""
+        if not self.encoders:
+            return None
+        if self.owns_gate(gate):
+            return self.encoders_by_gate[self.local_gate(gate)]
+        return self.encoders[0]     # Bypass, unknown or another unit's gate
+
+
+    @property
+    def encoder(self):
+        """
+        The encoder in use: the selected gate's while this unit has it selected, else the
+        unit's first. With one encoder for every gate (the usual case) that is always the same
+        object, so code written for one encoder per unit keeps working unchanged.
+        """
+        if not self.encoders:
+            return None
+        if len(self.encoders) == 1:
+            return self.encoders[0]
+        controller = getattr(self.mmu_machine, 'mmu_controller', None)
+        gate = controller.gate_selected if controller is not None else None
+        return self.encoder_for(gate if gate is not None else -1)
 
 
     # The encoder as a homing endstop, which an encoder whose counts arrive late can't do well
@@ -769,9 +809,13 @@ class MmuUnit:
         Uses the encoder's counter backend doesn't support (an analog one: its counts arrive
         after the move) are opt-in: off by default, honoured with a warning when set explicitly
         in [mmu_unit_parameters]. Only a default that would use one unasked stops the start.
+        With an encoder per gate, each of them is checked.
         """
-        encoder = self.encoder
-        if encoder is None or (encoder.supports_homing() and encoder.supports_move_validation()):
+        for encoder in self.encoders:
+            self._check_one_encoder(config, encoder)
+
+    def _check_one_encoder(self, config, encoder):
+        if encoder.supports_homing() and encoder.supports_move_validation():
             return
         params = config.getsection('mmu_unit_parameters %s' % self.name)
         def explicit(name):

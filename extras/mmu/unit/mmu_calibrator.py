@@ -479,8 +479,9 @@ class MmuCalibrator:
         moving average (EMA) filter to smooth adjustment of encoder resolution
         """
         if not self.mmu_unit.has_encoder(): return
+        encoder = self.mmu_unit.encoder_for(gate)
 
-        current_resolution = self.mmu_unit.encoder.get_resolution()
+        current_resolution = encoder.get_resolution()
         sampled_resolution = current_resolution * ratio
 
         msg = (
@@ -490,7 +491,7 @@ class MmuCalibrator:
         )
 
         if self.mmu_unit.p.autotune_encoder:
-            initial_resolution = self.mmu_unit.encoder.encoder_resolution
+            initial_resolution = encoder.encoder_resolution
 
             if not self.is_gear_rd_calibrated(gate):
                 self.mmu.log_info(f"Autotune: {msg}.\nIgnored because rotation distance not yet calibrated for gate")
@@ -503,7 +504,7 @@ class MmuCalibrator:
             new_resolution = self._ema_update(current_resolution, sampled_resolution, AUTOTUNE_ENCODER_WINDOW_LENGTH)
             self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_resolution:.4f}")
             self._note_autotune_change('encoder', None, current_resolution)
-            self.mmu_unit.encoder.set_resolution(new_resolution)
+            encoder.set_resolution(new_resolution)
 
         else:
             pass # Currently this option is hidden from user so we hide evidence of it
@@ -630,7 +631,7 @@ class MmuCalibrator:
         current = {
             'rd': self.get_gear_rd,
             'bowden': self.get_bowden_length,
-            'encoder': lambda gate: self.mmu_unit.encoder.get_resolution(),
+            'encoder': lambda gate: self.mmu_unit.encoder_for(gate).get_resolution(),
         }
 
         by_gate = {}
@@ -772,7 +773,12 @@ class MmuCalibrator:
         # Encoder ----------------------------------------------------
 
         if u.has_encoder() and should_check(CALIBRATED_ENCODER, u.p.skip_cal_encoder, u.p.autotune_encoder):
-            info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
+            if len(u.encoders) > 1:
+                missing = [g for g in u.gate_range() if not u.encoder_for(g).calibrated]
+                info = ("\n- Use MMU_CALIBRATE_ENCODER with each of these gates selected "
+                        "(one encoder per gate): %s" % ",".join(map(str, missing)))
+            else:
+                info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
             add_msg(info, u.p.skip_cal_encoder)
 
         # Rotation distances of gates other than first gate ----------

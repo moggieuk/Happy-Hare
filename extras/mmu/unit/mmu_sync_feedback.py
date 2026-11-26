@@ -197,6 +197,12 @@ class MmuSyncFeedback:
             self.ctrl.autotune.resume()
             msg = "FlowGuard monitoring activated and Autotune resumed"
 
+        # With an encoder per gate only the selected gate's wheel is watched: disarm the others
+        # first, which also invalidates any event they had queued
+        for encoder in u.encoders:
+            if encoder is not u.encoder and encoder.active_mmu_unit is u and encoder.is_flowguard_enabled():
+                encoder.disable_flowguard()
+
         # Enable encoder based Flowguard, taking over a shared encoder armed by another unit
         if u.has_encoder() and (not u.encoder.is_flowguard_enabled() or u.encoder.active_mmu_unit is not u):
             # Encoder monitoring may be off while buffer FlowGuard still activates.
@@ -217,8 +223,11 @@ class MmuSyncFeedback:
             self.ctrl.autotune.pause()
             msg = "FlowGuard monitoring deactivated and Autotune paused"
 
-        # Disable encoder based Flowguard. Only the unit that armed the encoder may disarm it
+        # Disable encoder based Flowguard. Only the unit that armed an encoder may disarm it
         if u.has_encoder():
+            for encoder in u.encoders:
+                if encoder is not u.encoder and encoder.active_mmu_unit is u and encoder.is_flowguard_enabled():
+                    encoder.disable_flowguard()
             if u.encoder.active_mmu_unit is not u:
                 self.flowguard_active = False
             elif u.encoder.is_flowguard_enabled():

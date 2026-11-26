@@ -36,12 +36,14 @@ class MmuEncoder:
 
         self.active_mmu_unit = None
         self.extruder = None
+        self.calibrated = False                 # A saved (calibrated) resolution is in use
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
         # A digital encoder_pin counted on the MCU, or an analog_pin sampled on the host
         analog_pin = config.get('analog_pin', None)
         if analog_pin and config.get('encoder_pin', None):
             raise config.error("[%s] sets both encoder_pin and analog_pin: use one" % config.get_name())
         encoder_pin = None if analog_pin else config.get('encoder_pin')
+        self.encoder_pin = encoder_pin
 
         # For measurement/counter functionality...
         sample_time = config.getfloat('sample_time', 0.1, above=0.)  # How often Klippy receives accumulated counts
@@ -95,7 +97,12 @@ class MmuEncoder:
 
         # Create virtual endstop (for giggles and experimental use)
         endstop_sensor_name = f"{self.name}:{SENSOR_ENCODER}"
-        self.endstop_sensor = MmuVirtualEndstopSensor(config, endstop_sensor_name, None, register=register_as_sensor)
+        # With an encoder per gate the unit's encoders can't all go by the short name 'encoder'
+        unit_section = 'mmu_unit %s' % mmu_unit.name
+        per_gate = (config.has_section(unit_section)
+                    and len(config.getsection(unit_section).getlist('encoder', [])) > 1)
+        self.endstop_sensor = MmuVirtualEndstopSensor(config, endstop_sensor_name, None, register=register_as_sensor,
+                                                      short_name=not per_gate)
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -174,10 +181,13 @@ class MmuEncoder:
         cal_res = self.mmu_machine.var_manager.get(VARS_MMU_ENCODER_RESOLUTION, None, namespace=self.name)
         if cal_res:
             self.set_resolution(cal_res)
+            self.calibrated = True
             self.mmu.log_debug(f"Loaded saved resolution for encoder {self.name}: {cal_res:.4f}")
 
+            # A unit with an encoder per gate is calibrated once every one of them is
             for unit in self.connected_units:
-                unit.calibrator.mark_calibrated(CALIBRATED_ENCODER)
+                if all(encoder.calibrated for encoder in unit.encoders):
+                    unit.calibrator.mark_calibrated(CALIBRATED_ENCODER)
         else:
             self.mmu.log_warning(f"Warning: Encoder resolution for {self.name} was not found in mmu_vars.cfg. Probably not calibrated")
 

@@ -2725,6 +2725,9 @@ class TestTheDefaultProfile(unittest.TestCase):
         with_encoder = [u for u in units if u.has_encoder()]
         if not with_encoder:
             self.skipTest('the default profile has no encoder to mis-report')
+        # A reading of its own to tell a wrong one from. Startup leaves this unit's wheel at 0:
+        # only its own gates turn it (another unit's filament never passes it)
+        with_encoder[0].encoder.set_distance(12.3)
         expected = with_encoder[0].encoder.get_distance()
         self.assertNotEqual(expected, 0., 'nothing to distinguish a wrong reading from')
         # Select a gate on a DIFFERENT unit - the case that used to zero the reading

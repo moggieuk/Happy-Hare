@@ -904,12 +904,19 @@ class Session:
         position = model.layout.get('mmu_encoder') if model else None
         if position is None:
             return
-        # A shared encoder sits downstream of the selector, so it only ever sees the
-        # gate currently selected. Happy Hare has no per-gate encoders.
-        if gate != self.mmu.gate_selected:
-            return
         travel = model.travel_over(position, start_tip, start_tail, delta)
         for encoder, counter in self._encoders():
+            unit = next((u for u in encoder.connected_units if u.owns_gate(gate)), None)
+            if unit is None:
+                continue
+            if len(unit.encoders) > 1:
+                # A wheel per gate turns with its own gate's filament, selected or not
+                if unit.encoder_for(gate) is not encoder:
+                    continue
+            elif gate != self.mmu.gate_selected:
+                # A shared encoder sits downstream of the selector, so it only ever sees the
+                # gate currently selected
+                continue
             # Carry the part-pulse over, or a stream of small extrusion moves never pulses
             pulses = self._encoder_residual.get(counter, 0.) + travel / encoder.resolution
             whole = int(round(pulses))
