@@ -254,6 +254,7 @@ class MmuGateMaps:
                 self.mmu._spoolman_update_filaments(gate_ids)
 
         self.mmu.led_manager.gate_map_changed(changed_gate)
+        self.mmu.movement_telemetry.gate_map_changed()
         event_gate = -1 if changed_gate is None else changed_gate
         self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % event_gate)
         lane_ids = None if changed_gate is None else [(changed_gate, self.gate_spool_id[changed_gate])]

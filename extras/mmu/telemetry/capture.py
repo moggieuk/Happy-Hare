@@ -256,7 +256,7 @@ kept; the limit only bounds a consumer that stops acknowledging.
             record = None
             if source['event'] == 'config_changed':
                 delta += self._config_delta(source)
-            else:
+            elif source['event'] != 'gate_map_changed':  # Only the read it prompts is recorded
                 record = plain(source)
         except Exception:
             self.failed = True  # The source detaches a listener that raises

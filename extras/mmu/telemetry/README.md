@@ -367,6 +367,8 @@ the next read are omitted. State is read at every event and once more 0.25 s aft
 last one (never in the middle of an open move), so a value assigned just after an event, such as a
 selector's grip, is recorded as a trailing `state_delta` without any polling. A change that
 raises no event of its own is captured by the next read, so it is stamped with that read's time.
+Saving the gate map prompts a read of its own, so an edit made with `MMU_GATE_MAP` (a colour, an
+availability) is recorded when it is made. That prompt is not a record: only the `state_delta` is stored.
 A new session or expired cursor requires a reset.
 
 `extras/mmu/telemetry/capture.py` owns this capture independently of the

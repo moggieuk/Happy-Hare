@@ -160,6 +160,14 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertIn('gate_homing_endstop', unit['parameters'])
         self.assertIn('toolhead_residual_filament', unit['toolhead']['parameters'])
 
+    def test_a_gate_map_edit_is_recorded_at_once_as_a_delta_with_no_event_of_its_own(self):
+        capture = self.capture()
+        before = len(capture.read()['records'])
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 COLOR=ff0000')
+        records = capture.read()['records'][before:]
+        self.assertEqual([r['event'] for r in records], ['state_delta'])
+        self.assertIn(['printer', 'mmu', 'gate_color'], [c['path'][:3] for c in records[0]['changes']])
+
     def test_parameter_edit_is_one_delta_and_does_not_reread_parameter_sets(self):
         capture = self.capture()
         with mock.patch.object(self.State, 'parameter_sets', side_effect=AssertionError('re-read')):

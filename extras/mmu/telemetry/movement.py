@@ -75,6 +75,11 @@ class MovementTelemetry:
         if self.listeners:
             self.state('config_changed', scope=scope, name=name, value=value)
 
+    def gate_map_changed(self):
+        """The gate map was edited: the capture reads it now, not at whatever event comes next."""
+        if self.listeners:
+            self.state('gate_map_changed')
+
     @property
     def current(self):
         return self.operations[-1]
