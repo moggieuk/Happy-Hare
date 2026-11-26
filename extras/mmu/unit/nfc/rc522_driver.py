@@ -678,6 +678,22 @@ class RC522Driver:
         }
 
     def _select_iso14443a_target(self, timeout=None):
+        # A tag is never halted after a read, so the tag selected by the
+        # previous read is still ACTIVE and ignores this REQA: back-to-back
+        # reads of a tag that has not moved alternate between found and not
+        # found. Power-cycling the field puts every tag in range back in IDLE,
+        # so each read starts the same way.
+        try:
+            tx = self._read(_TxControlReg)
+            self._write(_TxControlReg, tx & ~0x03)
+            self._sleep(0.002)
+            self._write(_TxControlReg, tx | 0x03)
+            self._sleep(0.005)
+        except Exception:
+            try:
+                self._write(_TxControlReg, self._read(_TxControlReg) | 0x03)
+            except Exception:
+                pass
         req = self._request_a(timeout=timeout)
         if req is None:
             return None
