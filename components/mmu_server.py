@@ -12,6 +12,9 @@
 # RFID Spool auto-create
 # Copyright (C) 2026 lameandboard
 #
+# Orcaslicer Color Mixing Support
+# Copyright (C) 2026 lanpartyceo <@kaemar (discord)>
+#
 # Happy Hare's Moonraker component. It runs inside Moonraker (not Klipper) and
 # performs two largely independent jobs:
 # 
@@ -2849,6 +2852,12 @@ FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$" #flush multiplier 
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
+# OrcaSlicer marks virtual (mixed) filament slots in the gcode header via a per-slot
+# boolean mask. Mixed slots never appear as T-numbers in the body (they resolve to their
+# physical components), but they DO inflate the per-slot metadata lists below, causing a
+# false "too many extruders" error when the count exceeds the MMU's gate count.
+FILAMENT_IS_MIXED_REGEX = r"^;\s*filament_is_mixed\s*=\s*(.*)$"
+
 # Detection for next pos processing and slicer parameters
 T_PATTERN  = r'^T(\d+)((?:\s+(?:SLICER_PURGE|SLICER_RETRACTION|SLICER_FW_RETRACTION)=[^\s;]+)*)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
@@ -2909,6 +2918,10 @@ def parse_gcode_file(file_path):
     purge_volumes = []
     filament_names = []
     flush_multiplier = 1.0 # Initialize flush_multiplier to 1.0
+
+    is_mixed_mask = []
+    found_is_mixed = False
+    is_mixed_regex = re.compile(FILAMENT_IS_MIXED_REGEX)
 
     with open(file_path, 'r') as in_file:
         for line in in_file:
@@ -3059,6 +3072,49 @@ def parse_gcode_file(file_path):
                         filament_names_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
                         filament_names.extend(filament_names_csv)
                         found_filament_names = True
+
+                # !filament_is_mixed! processing (OrcaSlicer virtual-slot mask)
+                if not found_is_mixed:
+                    match = is_mixed_regex.match(line)
+                    if match:
+                        is_mixed_mask = [int(t.strip()) for t in match.group(1).split(",")]
+                        found_is_mixed = True
+
+    # Drop virtual (mixed) filament slots so per-tool metadata reflects only physical
+    # tools. Mixed slots never appear as T-numbers in the body (they resolve to their
+    # physical components), but they DO inflate the per-slot lists, making len(colors)
+    # exceed the MMU gate count and trip MMU_START_SETUP's "too many extruders" check.
+    if found_is_mixed and is_mixed_mask:
+        n = len(is_mixed_mask)
+        if n == len(colors):
+            keep = [i for i, m in enumerate(is_mixed_mask) if not m]
+            colors = [colors[i] for i in keep]
+            if len(temps) == n:
+                temps = [temps[i] for i in keep]
+            if len(materials) == n:
+                materials = [materials[i] for i in keep]
+            if len(filament_names) == n:
+                filament_names = [filament_names[i] for i in keep]
+
+            # Rebuild the purge volumes list to drop the virtual slots, keeping its
+            # shape consistent with the reduced tool count so MMU_SLICER_TOOL_MAP can
+            # parse it (it accepts 1, N, 2N or N*N values).
+            pv = purge_volumes
+            if pv:
+                n_pv = len(pv)
+                if n_pv == 1:
+                    pass  # single value; unchanged
+                elif n_pv == n:
+                    purge_volumes = [pv[i] for i in keep]
+                elif n_pv == n * 2:
+                    purge_volumes = [pv[i] for i in keep] + [pv[n + i] for i in keep]
+                elif n_pv == n * n:
+                    M = len(keep)
+                    purge_volumes = [
+                        pv[keep[y] + keep[x] * n]
+                        for x in range(M) for y in range(M)
+                    ]
+                # Unknown shape: leave unchanged; MMU will report its own error.
 
     return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer)
