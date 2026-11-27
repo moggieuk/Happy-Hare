@@ -34,6 +34,9 @@ class PrinterMotionQueuing:
     PACE_TICK = 0.05
     # ... and the ceiling on slices per move, so a 60-second one does not run 1200 of them.
     PACE_MAX_SLICES = 400
+    # The most real time a move makes up for work done since the last one. Longer than this
+    # is the machine standing idle, not the simulator running late.
+    PACE_CATCH_UP = 0.25
 
     def __init__(self, config):
         self.printer = config.get_printer()
@@ -41,6 +44,7 @@ class PrinterMotionQueuing:
         self.scan_window_checks = 0
         self.movequeue_activity = []
         self.pending_moves = []
+        self.pace_deadline = None
         # Set by the harness (test/hh/bootstrap.py) to observe plain filament moves.
         # callable(trapq, signed_distance_mm)
         self.move_observer = None
@@ -140,7 +144,13 @@ class PrinterMotionQueuing:
             if observer is not None:
                 observer()
             if wall > 0.:
-                time.sleep(step * wall)
+                # Sleep to when the slice should end, so the work done meanwhile is not added
+                now = time.monotonic()
+                if self.pace_deadline is None or now - self.pace_deadline > self.PACE_CATCH_UP:
+                    self.pace_deadline = now
+                self.pace_deadline += step * wall
+                if self.pace_deadline > now:
+                    time.sleep(self.pace_deadline - now)
 
     def _note_move(self, trapq, distance):
         # THE hook for plain (non-homing) filament moves - notably the final park in
