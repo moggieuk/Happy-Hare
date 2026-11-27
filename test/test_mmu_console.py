@@ -2629,6 +2629,36 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertNotIn(0, hh.mmu.gate_maps.gate_status, 'a gate went EMPTY during a paced run')
         self.assertEqual(hh.errors, [])
 
+    def test_a_paced_move_holds_real_time_for_as_long_as_it_takes(self):
+        """
+        The work done between a move's slices (status pushes, the repaint) is part of the time
+        the move takes. Sleeping each slice's full share on top of it ran the simulator slower
+        than the machine: a quarter of a second of travel took 0.28s.
+        """
+        import sys
+        hh = self.console.hh
+        mq = hh.printer.lookup_object('motion_queuing')
+        module = sys.modules[type(mq).__module__]
+
+        class Clock:
+            now = 100.
+            def monotonic(self):
+                return self.now
+            def sleep(self, seconds):
+                self.now += seconds
+        clock = Clock()
+        self.addCleanup(setattr, module, 'time', module.time)
+        module.time = clock
+        observer = getattr(hh.printer, 'harness_pace_observer', None)
+        self.addCleanup(setattr, hh.printer, 'harness_pace_observer', observer)
+        hh.printer.harness_pace_observer = lambda: clock.sleep(0.02)   # work that takes time
+        self.addCleanup(hh.set_pacing, 0., wall=0.)
+        hh.set_pacing(1., wall=1.)
+
+        for _ in mq.pace_move(1., 2.):
+            pass
+        self.assertAlmostEqual(clock.now - 100., 1., delta=0.03)
+
     def test_output_is_stamped_when_happy_hare_said_it(self):
         """
         _drain() runs AFTER a command returns, so stamping there gave every line of an
