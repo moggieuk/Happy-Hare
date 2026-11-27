@@ -76,11 +76,17 @@ class FakeHttpClient:
         self.spoolman = spoolman
         self.spoolmandb = spoolmandb
         self.requests = []          # [(method, url, headers)] assertion surface
+        self.tigertag = {}          # TigerTag registry fixtures: {'last_update': {...}, 'id_brand': [...], ...}
 
     async def request(self, method, url, body=None, headers=None, **kwargs):
         self.requests.append((method, url, dict(headers) if headers else {}))
         if 'donkie.github.io' in url:
             return self._spoolmandb(url)
+        if 'TigerTag-RFID-Guide' in url:
+            name = url.rsplit('/', 1)[-1].removesuffix('.json')
+            if name in self.tigertag:
+                return spoolman_mod.Response(200, self.tigertag[name])
+            return spoolman_mod.Response(404, error='not found (test)')
         return self.spoolman.handle(method.upper(), url, body)
 
     async def get(self, url, **kwargs):
@@ -151,6 +157,7 @@ class FakeKlippyApis:
         self.pause_calls = 0
         self.klippy_state = 'ready'  # webhooks.state: 'startup' until Klipper accepts gcode
         self.extra_status = {}
+        self.config_sections = {}   # Klipper's configfile 'config': {section: {option: raw string}}
         # The second channel back into Klipper, for the TD-1 bridge alone: an endpoint
         # reply rather than a gcode command, queued for the same reason
         self.endpoint_requests = []  # [(path, args)] every request, in order
@@ -164,6 +171,8 @@ class FakeKlippyApis:
 
     async def query_objects(self, objects, default=None):
         result = {}
+        if 'configfile' in objects:
+            result['configfile'] = {'config': dict(self.config_sections)}
         if 'webhooks' in objects:
             result['webhooks'] = {'state': self.klippy_state}
         if 'mmu' in objects and self.mmu_present:
@@ -416,6 +425,7 @@ class FakeServer:
         self.remote_methods = {}    # name -> handler
         self.events = []            # [(name, payload)] every send_event
         self.warnings = []
+        self.klippy_info = {}       # Klipper's 'info' as Moonraker caches it (config_file etc.)
 
     def get_host_info(self):
         return {'hostname': self.hostname, 'address': '127.0.0.1', 'port': 7125}
@@ -447,6 +457,9 @@ class FakeServer:
 
     def get_app_args(self):
         return {'software_version': 'v0.9.3-harness'}
+
+    def get_klippy_info(self):
+        return self.klippy_info
 
     def is_running(self):
         return True

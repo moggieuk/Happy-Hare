@@ -556,5 +556,235 @@ class TestStartupWarningsReachTheConsole(unittest.TestCase):
         self.assertEqual(self.warnings(logged), [])
 
 
+class TestTigerTagRegistryAtStartup(unittest.TestCase):
+    """nfc_tigertag_registry ([mmu_parameters], printer-wide): Klipper adds Moonraker's downloaded
+    TigerTag IDs once at startup."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session('nfc_per_gate')
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def setUp(self):
+        import json, os, shutil
+        from extras.mmu.unit.nfc import tag_parser
+        self.tag_parser = tag_parser
+        saved = {t.attr: dict(getattr(tag_parser, t.attr)) for t in tag_parser._tigertag_registry.TABLES}
+        def restore():
+            for attr, table in saved.items():
+                getattr(tag_parser, attr).clear()
+                getattr(tag_parser, attr).update(table)
+        self.addCleanup(restore)
+        cache = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag')
+        shutil.rmtree(cache, ignore_errors=True)                # Each test starts with only id_brand.json
+        os.makedirs(cache, exist_ok=True)
+        with open(os.path.join(cache, 'id_brand.json'), 'w') as f:
+            json.dump([{'id': 64999, 'name': 'Newbrand'}], f)
+        self.p = self.hh.mmu.p
+        self.addCleanup(setattr, self.p, 'nfc_tigertag_registry', self.p.nfc_tigertag_registry)
+
+    def test_parameter_defaults_off(self):
+        self.assertEqual(self.p.nfc_tigertag_registry, 0)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_parameter_is_printer_wide_not_per_unit(self):
+        for unit in self.hh.mmu.mmu_machine.units:
+            self.assertFalse(hasattr(unit.p, 'nfc_tigertag_registry'), unit.name)
+
+    def test_off_loads_nothing(self):
+        self.p.nfc_tigertag_registry = 0
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+
+    def test_on_adds_the_downloaded_ids(self):
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertEqual(self.tag_parser._TIGERTAG_BRANDS.get(64999), 'Newbrand')
+
+    def load_logged(self):
+        """(lines written to mmu.log by the load, whether the console changed)"""
+        from unittest import mock
+        before = self.hh.console
+        with mock.patch.object(self.hh.mmu, 'log_to_file') as log_to_file:
+            self.hh.mmu._load_tigertag_registry()
+        return [c.args[0] for c in log_to_file.call_args_list], self.hh.console != before
+
+    def test_load_is_recorded_in_the_log_only(self):
+        self.p.nfc_tigertag_registry = 1
+        lines, console_changed = self.load_logged()
+        self.assertEqual(len(lines), 1, lines)
+        self.assertRegex(lines[0], r"^TigerTag registry: loaded 1 of 7 tables from .*optional/tigertag, 1 new ID\(s\)$")
+        self.assertFalse(console_changed)
+
+    def test_load_adding_nothing_is_still_recorded(self):
+        import json, os
+        brand = next(iter(self.tag_parser._TIGERTAG_BRANDS))     # Already built in: adds nothing
+        with open(os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag', 'id_brand.json'), 'w') as f:
+            json.dump([{'id': brand, 'name': 'Renamed'}], f)
+        self.p.nfc_tigertag_registry = 1
+        lines, _ = self.load_logged()
+        self.assertRegex(lines[0], r"loaded 1 of 7 tables .*, 0 new ID\(s\)$")
+
+    def test_repeat_load_counts_from_the_built_in_tables(self):
+        """Each startup starts again from the built-in tables, so a RESTART reports the same count"""
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        lines, _ = self.load_logged()
+        self.assertRegex(lines[0], r"loaded 1 of 7 tables .*, 1 new ID\(s\)$")
+
+    # A Klipper RESTART builds new printer objects but keeps imported modules, so the tag
+    # parser's tables survive it. Calling _load_tigertag_registry() twice on the same booted
+    # session is exactly that: a second startup in the same process
+
+    def test_restart_with_the_option_off_drops_the_downloaded_ids(self):
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertEqual(self.tag_parser._TIGERTAG_BRANDS.get(64999), 'Newbrand')
+        self.p.nfc_tigertag_registry = 0
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+
+    def test_restart_with_the_option_off_drops_downloaded_version_ids(self):
+        import json, os, struct
+        magic = 0x1234ABCD                                      # Not a built-in version
+        self.assertNotIn(magic, self.tag_parser._TIGERTAG_MAGIC)
+        with open(os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag', 'id_version.json'), 'w') as f:
+            json.dump([{'id': magic, 'name': 'TigerTag Test', 'version': '1.9'}], f)
+        raw = struct.pack(">I", magic) + bytes(28)
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertTrue(self.tag_parser._has_tigertag_magic(raw))
+        self.p.nfc_tigertag_registry = 0
+        self.hh.mmu._load_tigertag_registry()
+        self.assertFalse(self.tag_parser._has_tigertag_magic(raw))
+
+    def test_restart_after_a_table_is_deleted_drops_its_ids(self):
+        import os
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+        cache = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag')
+        with open(os.path.join(cache, 'id_aspect.json'), 'w') as f:
+            f.write('[]')                                       # Another table remains, so a load still runs
+        os.remove(os.path.join(cache, 'id_brand.json'))
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64999, self.tag_parser._TIGERTAG_BRANDS)
+
+    def test_restart_after_a_table_shrinks_drops_the_removed_ids(self):
+        import json, os
+        path = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag', 'id_brand.json')
+        with open(path, 'w') as f:
+            json.dump([{'id': 64999, 'name': 'Newbrand'}, {'id': 64998, 'name': 'Gonebrand'}], f)
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.assertIn(64998, self.tag_parser._TIGERTAG_BRANDS)
+        with open(path, 'w') as f:
+            json.dump([{'id': 64999, 'name': 'Newbrand'}], f)  # The registry dropped Gonebrand
+        self.hh.mmu._load_tigertag_registry()
+        self.assertNotIn(64998, self.tag_parser._TIGERTAG_BRANDS)
+        self.assertEqual(self.tag_parser._TIGERTAG_BRANDS.get(64999), 'Newbrand')
+
+    def test_reset_restores_the_built_in_tables_exactly(self):
+        before = {t.attr: dict(getattr(self.tag_parser, t.attr)) for t in self.tag_parser._tigertag_registry.TABLES}
+        self.p.nfc_tigertag_registry = 1
+        self.hh.mmu._load_tigertag_registry()
+        self.tag_parser.reset_tigertag_registry()
+        after = {t.attr: dict(getattr(self.tag_parser, t.attr)) for t in self.tag_parser._tigertag_registry.TABLES}
+        self.assertEqual(after, before)
+
+    def test_no_downloaded_tables_yet_is_recorded(self):
+        import os, shutil
+        shutil.rmtree(os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag'))
+        self.p.nfc_tigertag_registry = 1
+        lines, console_changed = self.load_logged()
+        self.assertEqual(len(lines), 1, lines)
+        self.assertRegex(lines[0], r"^TigerTag registry: no downloaded tables in .* yet, using the built-in tables$")
+        self.assertFalse(console_changed)
+
+    def test_off_writes_nothing_to_the_log(self):
+        self.p.nfc_tigertag_registry = 0
+        lines, _ = self.load_logged()
+        self.assertEqual(lines, [])
+
+
+class TestTigerTagResolutionPerUnit(unittest.TestCase):
+    """
+    The registry is printer-wide (one parser, one set of tables), but whether a unit's tags are
+    resolved through it is that unit's nfc_deep_read: without it the tag is never parsed and
+    only the UID is read. Driven through the real read path - reader -> NTAG capture ->
+    tag_parser - with a TigerTag whose brand only the downloaded table knows.
+    """
+
+    UID = '04112233445566'
+    BRAND = 64999                               # Not in the built-in tables: only the download names it
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session('nfc_per_gate', virtual_nfc=True)
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def setUp(self):
+        import json, os
+        from extras.mmu.unit.nfc import tag_parser
+        from test.test_mmu_tag_parser import tigertag_image
+        self.assertNotIn(self.BRAND, tag_parser._TIGERTAG_BRANDS)
+        saved = dict(tag_parser._TIGERTAG_BRANDS)
+        self.addCleanup(lambda: (tag_parser._TIGERTAG_BRANDS.clear(), tag_parser._TIGERTAG_BRANDS.update(saved)))
+        cache = os.path.join(self.hh.tmpdir, 'mmu', 'optional', 'tigertag')
+        os.makedirs(cache, exist_ok=True)
+        with open(os.path.join(cache, 'id_brand.json'), 'w') as f:
+            json.dump([{'id': self.BRAND, 'name': 'Newbrand'}], f)
+
+        mmu = self.hh.mmu
+        self.unit = mmu.mmu_machine.units[0]
+        self.manager = self.unit.nfc_manager
+        self.addCleanup(setattr, mmu.p, 'nfc_tigertag_registry', mmu.p.nfc_tigertag_registry)
+        self.addCleanup(setattr, self.unit.p, 'nfc_deep_read', self.unit.p.nfc_deep_read)
+
+        # Gate 0's reader holds an NTAG carrying a TigerTag (the fake chip is UID-only otherwise)
+        image = tigertag_image(0x5BF59264, brand_id=self.BRAND) + bytes(28)
+        chip = self.hh.chip(0)
+        chip.present(self.UID)
+        chip.read_target = lambda timeout=0.5: {'uid': self.UID, 'protocol': 'iso14443a', 'sak': 0x00,
+                                                'uid_length': len(self.UID) // 2}
+        chip.ntag_read_ndef_user_memory = lambda start_page=4, max_pages=16: image
+        self.addCleanup(chip.clear)
+        for attr in ('read_target', 'ntag_read_ndef_user_memory'):
+            self.addCleanup(chip.__dict__.pop, attr, None)
+
+    def resolve(self, registry, deep_read):
+        """Start with these settings, then read gate 0 as MmuNfcManager.read_gate does"""
+        self.hh.mmu.p.nfc_tigertag_registry = registry
+        self.unit.p.nfc_deep_read = deep_read
+        self.hh.mmu._load_tigertag_registry()
+        reader = self.manager._reader_for(gate=0)
+        return self.manager._read_reader(reader, deep=self.manager._want_metadata())
+
+    def test_deep_read_unit_resolves_the_downloaded_brand(self):
+        uid, metadata = self.resolve(registry=1, deep_read=1)
+        self.assertEqual(uid, self.UID)
+        self.assertEqual(metadata.get('tag_format'), 'tigertag')
+        self.assertEqual(metadata.get('brand'), 'Newbrand')
+
+    def test_unit_without_deep_read_reads_only_the_uid(self):
+        uid, metadata = self.resolve(registry=1, deep_read=0)
+        self.assertEqual(uid, self.UID)
+        self.assertIsNone(metadata)
+
+    def test_registry_off_still_decodes_with_the_built_in_tables(self):
+        uid, metadata = self.resolve(registry=0, deep_read=1)
+        self.assertEqual(metadata.get('tag_format'), 'tigertag')
+        self.assertEqual(metadata.get('material'), 'PLA')
+        self.assertNotEqual(metadata.get('brand'), 'Newbrand')
+
+
 if __name__ == '__main__':
     unittest.main()

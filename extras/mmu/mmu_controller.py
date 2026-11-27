@@ -257,6 +257,8 @@ class MmuController(MmuFilamentMovement):
         # Clients start from the configfile, so record where load-time fix-ups moved values away from it
         self._seed_config_changes()
 
+        self._load_tigertag_registry()
+
         # Setup events for managing internal print state machine
         self.psm.register_event_handlers()
 
@@ -4416,6 +4418,42 @@ class MmuController(MmuFilamentMovement):
         else:
             temperature = int(self.p.default_extruder_temp)
         return name, material, vendor, color, temperature
+
+
+    def _load_tigertag_registry(self):
+        """
+        With nfc_tigertag_registry on, add the TigerTag IDs Moonraker downloaded into
+        <config>/mmu/optional/tigertag to the tag parser's tables. Once, at startup: a newer
+        download takes effect on the next restart. One line in mmu.log (not the console)
+        records the outcome, so a load that adds nothing can still be confirmed.
+
+        Printer-wide, because there is one parser and one set of tables for every unit. Whether
+        a unit's tags use them is that unit's nfc_deep_read: without it a tag is never parsed
+        (MmuNfcManager._want_metadata), so only its UID is read.
+
+        Every startup first resets the tables to the built-in ones: RESTART keeps the parser
+        module loaded, so without it IDs an earlier startup added would survive the option
+        being turned off, or a table Moonraker shrank or deleted
+        """
+        from .unit.nfc import tag_parser, tigertag_registry
+        tag_parser.reset_tigertag_registry()
+        if not self.p.nfc_tigertag_registry:
+            return
+        cache_dir = tigertag_registry.cache_dir(self.printer.get_start_args().get('config_file'))
+        if not cache_dir:
+            return
+        import os
+        found = sum(os.path.isfile(os.path.join(cache_dir, t.file + ".json")) for t in tigertag_registry.TABLES)
+        if not found:
+            self.log_to_file("TigerTag registry: no downloaded tables in %s yet, using the built-in tables" % cache_dir, prefix='')
+            return
+        try:
+            added = tag_parser.load_tigertag_registry(cache_dir)
+        except Exception as e:
+            self.log_to_file("TigerTag registry: couldn't load from %s: %s" % (cache_dir, str(e)), prefix='')
+            return
+        self.log_to_file("TigerTag registry: loaded %d of %d tables from %s, %d new ID(s)"
+                         % (found, len(tigertag_registry.TABLES), cache_dir, added), prefix='')
 
 
     def nfc_deep_read_enabled(self, unit):
