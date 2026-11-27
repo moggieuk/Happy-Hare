@@ -62,7 +62,7 @@ KINDS = {
         has="MMU_HAS_ENCODER",
         shared="MMU_SHARED_ENCODER",
         name="PARAM_ENCODER_NAME",
-        exports=(),
+        exports=(Export("MMU_HAS_ANALOG_ENCODER", "n"),),
     ),
 }
 

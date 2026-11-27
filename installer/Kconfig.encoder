@@ -1,5 +1,6 @@
 # Responsible for setting:
 #   MMU_HAS_ENCODER
+#   MMU_HAS_ANALOG_ENCODER
 #
 # Encoder parameter tokens which must be inside if MMU_HAS_ENCODER clause in cfg templates:
 #   MMU_SHARED_ENCODER
@@ -92,6 +93,24 @@ if MMU_HAS_ENCODER
     comment "No other unit owns this encoder: define it in your own config" if \
         MMU_SHARED_ENCODER && !SHARED_ENCODER_FOUND && PARAM_ENCODER_NAME != ""
       dim
+
+    # A shared encoder's input type belongs to its owner, not this unit's hidden choice.
+    if MMU_SHARED_ENCODER
+      shared_kind     := encoder
+      shared_name_sym := PARAM_ENCODER_NAME
+      shared_export   := MMU_HAS_ANALOG_ENCODER
+      source "components/Kconfig.shared_export"
+    endif
+
+    config MMU_HAS_ANALOG_ENCODER
+      bool "Shared encoder uses analog input?" if MMU_SHARED_ENCODER && !SHARED_ENCODER_FOUND
+      default y if !MMU_SHARED_ENCODER && CHOICE_ENCODER_TYPE_ANALOG
+      default n
+      help
+        For an encoder defined in your own config, select this if its section uses
+        analog_pin instead of encoder_pin. Another unit's encoder supplies this
+        capability automatically. Analog encoders default to no movement validation
+        or encoder homing; either can still be selected explicitly.
 
     if !MMU_SHARED_ENCODER
       choice CHOICE_ENCODER_TYPE
@@ -293,7 +312,7 @@ if MMU_HAS_ENCODER
 
     config PARAM_ENCODER_MOVE_VALIDATION
       boolint "Use encoder to validate movement distance?"
-      default 0 if CHOICE_ENCODER_TYPE_ANALOG
+      default 0 if MMU_HAS_ANALOG_ENCODER
       default 1
       help
         ADVANCED: Determines if encoder measurement should be used to validate movement distance.

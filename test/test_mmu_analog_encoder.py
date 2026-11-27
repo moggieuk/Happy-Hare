@@ -240,6 +240,16 @@ class TestCallbackContract(CounterTestCase):
 
 class TestSetup(CounterTestCase):
 
+    def test_setup_minmax_api_uses_the_compatibility_shim(self):
+        from test.test_mmu_adc_compat import OldestApiAdc
+        self.make(adc_class=lambda pin: OldestApiAdc())
+        self.assertEqual(self.adc().calls[0], ('minmax', 0.001, 4))
+        self.assertEqual(self.adc().calls[1][:2], ('callback', 0.02))
+        self.adc().calls[1][2](0.02, 0.50)
+        self.adc().calls[1][2](0.04, 0.81)
+        self.assertEqual(self.counter.count, 1)
+        self.assertAlmostEqual(self.counter.report_latency(), 0.04)
+
     def test_batched_reports_when_klipper_has_them(self):
         self.make(analog_report_time='0.02', analog_batch='8')
         self.assertEqual(self.adc().sample_args[0], 0.02)

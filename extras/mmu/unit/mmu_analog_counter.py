@@ -68,14 +68,17 @@ class MmuAnalogCounter:
 
         ppins = self.printer.lookup_object('pins')
         self.mcu_adc = ppins.setup_pin('adc', pin)
-        self._batched = True
-        try:
-            self.mcu_adc.setup_adc_sample(self.report_time, self.SAMPLE_TIME, self.SAMPLE_COUNT,
-                                          batch_num=self.batch)
-            self.mcu_adc.setup_adc_callback(self._adc_callback)
-        except TypeError:
+        self._batched = False
+        if hasattr(self.mcu_adc, 'setup_adc_sample'):
+            try:
+                self.mcu_adc.setup_adc_sample(self.report_time, self.SAMPLE_TIME, self.SAMPLE_COUNT,
+                                              batch_num=self.batch)
+                self.mcu_adc.setup_adc_callback(self._adc_callback)
+                self._batched = True
+            except TypeError:
+                pass
+        if not self._batched:
             # Klipper without batched ADC reports: one sample per report
-            self._batched = False
             MmuAdcHelper.setup_adc_compat(self.mcu_adc, self.report_time, self.SAMPLE_TIME,
                                           self.SAMPLE_COUNT, self._adc_callback)
         logging.info("MMU: Created analog encoder counter on %s" % pin)
