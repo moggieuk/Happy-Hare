@@ -119,9 +119,6 @@ class TestDryingRotationWhilePrinting(unittest.TestCase):
         self.stepper_enable = self.hh.printer.lookup_object('stepper_enable')
         self.motion_queuing = self.hh.printer.lookup_object('motion_queuing')
         self.mcu = self.hh.printer.lookup_object('mcu')
-        # Klipper's print time is never negative but the harness starts it at -HOST_OFFSET.
-        # Idle gears have next_cmd_time 0, so let print time pass that as on a running printer
-        self.hh.reactor.advance(1. - self._est())
         for gate in (1, 2):
             self.hh.run_gcode('MMU_GATE_MAP GATE=%d AVAILABLE=0 QUIET=1' % gate)
             # Gears are auto-enabled by their steps on real Klipper

@@ -255,5 +255,5 @@ class TestLivePositionBeforeClockSync(unittest.TestCase):
         self.assertTrue(self.mmu.get_filament_position_string())
 
     def test_a_real_time_still_asks_the_mcu(self):
-        self.mmu.get_status(1e5)                    # Well after the clocks are synchronised
+        self.mmu.get_status(self.hh.reactor.monotonic())
         self.assertTrue(self.past_mock.called)
