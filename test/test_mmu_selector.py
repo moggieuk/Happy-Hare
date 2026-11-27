@@ -166,6 +166,17 @@ class TestLinearSelector(SelectorTestCase):
         self.assertEqual(self.hh.mmu.gate_status[1], GATE_UNKNOWN)
         self.assertEqual(self.hh.errors, [])
 
+    def test_a_homing_selector_reports_the_position_it_is_homing_to(self):
+        stepper = self.selector('unit0').selector_stepper
+        self.hh.run_gcode('MMU_SELECT GATE=3')
+        seen = []
+        self.hh.printer.harness_pace_observer = lambda: seen.append(stepper.commanded_pos)
+        self.addCleanup(setattr, self.hh.printer, 'harness_pace_observer', None)
+        self.hh.set_pacing(1.)
+        self.addCleanup(self.hh.set_pacing, 0.)
+        self.hh.run_gcode('MMU_HOME UNIT=0')
+        self.assertEqual(seen[0], stepper.rail.get_homing_info().position_endstop)
+
     def test_homing_succeeds(self):
         """
         The regression test for the whole file. This used to raise

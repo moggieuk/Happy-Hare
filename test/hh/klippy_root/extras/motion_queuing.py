@@ -40,6 +40,7 @@ class PrinterMotionQueuing:
         self.trapqs = []
         self.scan_window_checks = 0
         self.movequeue_activity = []
+        self.pending_moves = []
         # Set by the harness (test/hh/bootstrap.py) to observe plain filament moves.
         # callable(trapq, signed_distance_mm)
         self.move_observer = None
@@ -82,9 +83,15 @@ class PrinterMotionQueuing:
             # calls set_position), so there is no double counting. The retract inside
             # MmuGenericRail.home DOES appear, and should.
             distance = axes_r_x * cruise_v * (accel_t + cruise_t)
-            # Optionally let this move take TIME, walking the filament along as it goes.
-            self._run_move(trapq, distance, accel_t + cruise_t + decel_t)
+            # As in Klipper, queuing a move takes no time: it runs when the queue is next
+            # noted, by which point the caller has recorded where the move ends.
+            self.pending_moves.append((trapq, distance, accel_t + cruise_t + decel_t))
         return trapq_append
+
+    def _run_pending_moves(self):
+        """Optionally let each queued move take TIME, walking the filament along as it goes."""
+        while self.pending_moves:
+            self._run_move(*self.pending_moves.pop(0))
 
     def _run_move(self, trapq, distance, duration):
         """Effect a plain trapq move: walk it, telling the observer each slice's share."""
@@ -175,6 +182,7 @@ class PrinterMotionQueuing:
 
     def note_mcu_movequeue_activity(self, mq_time, set_step_gen_time=False):
         self.movequeue_activity.append(mq_time)
+        self._run_pending_moves()
 
     MIN_KIN_TIME = 0.100
     SDS_CHECK_TIME = 0.001

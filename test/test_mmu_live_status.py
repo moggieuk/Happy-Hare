@@ -40,6 +40,24 @@ class TestLiveStatus(unittest.TestCase):
         with mock.patch.object(mmu.drive(), 'get_filament_position', return_value=712.0900000000003):
             self.assertEqual(mmu.get_status(0)['filament_position'], 712.09)
 
+    def test_filament_position_is_the_target_of_the_move_under_way(self):
+        mmu = self.hh.mmu
+        self.hh.place_filament(0)
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1')
+        seen = []
+        def observe():
+            status = mmu.get_status(self.hh.reactor.monotonic())
+            seen.append((status['filament_position'], status['filament_position_live']))
+        self.hh.printer.harness_pace_observer = observe
+        self.addCleanup(setattr, self.hh.printer, 'harness_pace_observer', None)
+        self.hh.set_pacing(1.)
+        self.addCleanup(self.hh.set_pacing, 0.)
+        self.hh.run_gcode('MMU_LOAD')
+        furthest = max(live for _, live in seen)
+        feeding = seen[:[live for _, live in seen].index(furthest) + 1]
+        self.assertGreater(len(feeding), 50)
+        self.assertFalse([s for s in feeding if s[0] < s[1] - 0.1][:5])
+
     def test_runtime_edits_are_reported_against_their_config_section(self):
         mmu = self.hh.mmu
         self.assertNotIn('mmu_toolhead default', mmu.get_status(0)['config_changes'])
