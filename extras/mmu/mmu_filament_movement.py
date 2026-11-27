@@ -128,6 +128,8 @@ class MmuFilamentMovement:
         if endstop not in SHARED_GATE_ENDSTOPS:
             return False
         if endstop == SENSOR_ENCODER:
+            # Also with an encoder per gate: the gate's own wheel says nothing about the merge
+            # downstream, which the loaded filament still occupies
             unit = self.mmu_unit(gate)
             return (self.filament_pos != FILAMENT_POS_UNLOADED
                     and self.gate_selected != gate

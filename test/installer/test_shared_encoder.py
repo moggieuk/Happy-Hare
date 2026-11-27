@@ -1,6 +1,6 @@
 # A unit sharing an encoder it doesn't define: another unit's, or one in the user's own
-# config, named by PARAM_ENCODER_NAME. Unlike the buffer there is nothing to take from an
-# owner but its name. Value files are written and refreshed the way install.sh's unit passes
+# config, named by PARAM_ENCODER_NAME. Analog capabilities follow the named owner.
+# Value files are written and refreshed the way install.sh's unit passes
 # do (see test_shared_buffer.py for the helper).
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
@@ -86,6 +86,62 @@ class TestSharedEncoderRender(unittest.TestCase):
 
 class TestSharedEncoderSaved(unittest.TestCase):
 
+    def test_shared_analog_defaults_follow_the_owner_and_refresh(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', dict(profiles.ENCODER_ANALOG.syms,
+                                      PARAM_ENCODER_NAME='hall'))
+            kc = install.save('unit1', _sharing(TRADRACK_OWNER, 'hall'))
+            self.assertEqual(kc.syms['PARAM_ENCODER_MOVE_VALIDATION'].str_value, '0')
+            self.assertNotEqual(kc.syms['PARAM_EXTRUDER_HOMING_ENDSTOP'].str_value, 'encoder')
+            self.assertEqual(kc.syms['MMU_HAS_ANALOG_ENCODER'].visibility, 0)
+            self.assertFalse(install.stale('unit1'))
+            install.save('unit0', dict(ENCODER_OWNER, PARAM_ENCODER_NAME='hall'))
+            self.assertTrue(install.stale('unit1'))
+            kc = install.refresh('unit1')
+            self.assertEqual(kc.syms['PARAM_ENCODER_MOVE_VALIDATION'].str_value, '1')
+            self.assertEqual(kc.syms['PARAM_EXTRUDER_HOMING_ENDSTOP'].str_value, 'encoder')
+            self.assertFalse(install.stale('unit1'))
+
+    def test_external_analog_capability_survives_refresh(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0',))
+            install.save('unit0', dict(_sharing(TRADRACK_OWNER, 'external'),
+                                      MMU_HAS_ANALOG_ENCODER=True))
+            kc = install.refresh('unit0')
+            self.assertEqual(kc.syms['PARAM_ENCODER_MOVE_VALIDATION'].str_value, '0')
+            self.assertNotEqual(kc.syms['PARAM_EXTRUDER_HOMING_ENDSTOP'].str_value, 'encoder')
+
+    def test_an_analog_owner_saved_after_its_sharer_is_picked_up(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            install = _Install(tmp, ('unit0', 'unit1'))
+            install.save('unit0', _sharing(TRADRACK_OWNER, 'unit1'))
+            install.save('unit1', profiles.ENCODER_ANALOG.syms)
+            self.assertTrue(install.stale('unit0'))
+            kc = install.refresh('unit0')
+            self.assertEqual(kc.syms['PARAM_ENCODER_MOVE_VALIDATION'].str_value, '0')
+            self.assertNotEqual(kc.syms['PARAM_EXTRUDER_HOMING_ENDSTOP'].str_value, 'encoder')
+            self.assertFalse(install.stale('unit0'))
+
+    def test_shared_analog_render_and_explicit_opt_ins(self):
+        for opt_in in (False, True):
+            with self.subTest(opt_in=opt_in):
+                sharer = _sharing(TRADRACK_OWNER, 'hall')
+                if opt_in:
+                    sharer.update(PARAM_ENCODER_MOVE_VALIDATION=1,
+                                  CHOICE_GATE_HOMING_ENDSTOP_ENCODER=True,
+                                  CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER=True)
+                profile = profiles.Profile('shared_analog_%s' % opt_in, units=[
+                    profiles.UnitProfile('unit0', index=0, syms=dict(
+                        profiles.ENCODER_ANALOG.syms, PARAM_ENCODER_NAME='hall')),
+                    profiles.UnitProfile('unit1', index=1, syms=sharer),
+                ])
+                parser = cfg.assemble(cfg.render(profile))
+                params = dict(parser.items('mmu_unit_parameters unit1'))
+                self.assertEqual(params['encoder_move_validation'], '1' if opt_in else '0')
+                for name in ('gate_homing_endstop', 'extruder_homing_endstop'):
+                    self.assertEqual(params[name] == 'encoder', opt_in, name)
+
     def test_a_sharers_name_saved_as_a_default_survives_a_refresh(self):
         """A pick list saved the owner's name as a #~DEFAULT~# value."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,7 +191,7 @@ class TestSharedEncoderSaved(unittest.TestCase):
             self.assertEqual(install.refresh('unit1').syms['PARAM_ENCODER_NAME'].str_value,
                              'unit0')
 
-    def test_nothing_goes_stale_for_an_encoder(self):
+    def test_a_digital_encoder_keeps_existing_shared_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             install = _Install(tmp, ('unit0', 'unit1'))
             install.save('unit0', _sharing(NO_ENCODER, 'unit1'))

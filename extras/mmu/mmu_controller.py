@@ -151,6 +151,7 @@ class MmuController(MmuFilamentMovement):
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
         self.printer.register_event_handler('mmu:unit_selected', self._handle_unit_selected)
+        self.printer.register_event_handler('mmu:gate_selected', self._handle_gate_selected)
 
 
     def reinit(self):
@@ -783,7 +784,7 @@ class MmuController(MmuFilamentMovement):
             gate = self.gate_selected
         mmu_unit = self.mmu_unit(gate)
         if mmu_unit:
-            return mmu_unit.encoder
+            return mmu_unit.encoder_for(gate)
         return None
 
 
@@ -2966,6 +2967,12 @@ class MmuController(MmuFilamentMovement):
         self._apply_flowguard_scope()
 
 
+    def _handle_gate_selected(self, gate, prev_gate):
+        # With an encoder per gate the selected gate's wheel is the one to watch
+        if len(self.mmu_unit().encoders) > 1:
+            self._apply_flowguard_scope()
+
+
     def _apply_flowguard_scope(self, eventtime=None):
         """
         FlowGuard raises clog/tangle without consulting the sensor arming, and it is per-unit,
@@ -3076,6 +3083,9 @@ class MmuController(MmuFilamentMovement):
             self.movequeue_wait()
         elif dwell is False:
             self.movequeue_wait()
+        if dwell is not None and self.has_encoder():
+            # An analog encoder's counts lag the movement: wait until they have all arrived
+            self.encoder().wait_for_counts()
 
 
     def initialize_encoder(self, dwell=False):

@@ -85,7 +85,10 @@ class MmuStatusCommand(BaseCommand):
             lines.append(f"{UI_CASCADE} Connected to extruder: {unit.extruder_name()}\n")
             lines.append(f"{UI_CASCADE} {unit.selector.get_mmu_status_config()}\n")
             if unit.has_encoder():
-                lines.append(f"{UI_CASCADE} Encoder reads {unit.encoder.get_distance():.1f}mm\n")
+                if len(unit.encoders) > 1:
+                    lines.append(f"{UI_CASCADE} Encoder per gate, {unit.encoder.name} reads {unit.encoder.get_distance():.1f}mm\n")
+                else:
+                    lines.append(f"{UI_CASCADE} Encoder reads {unit.encoder.get_distance():.1f}mm\n")
             if unit.has_buffer():
                 lines.append(f"{UI_CASCADE} Buffer reads {unit.sync_feedback.get_sync_feedback_string(detail=True)}\n")
 

@@ -269,8 +269,16 @@ class CalibrationMixin:
             if save:
                 encoder.set_resolution(resolution)
                 mmu.var_manager.set(VARS_MMU_ENCODER_RESOLUTION, round(resolution, 4), namespace=encoder.name, write=True)
-                mmu.log_always("Encoder calibration has been saved")
-                calibrator.calibration_status |= CALIBRATED_ENCODER
+                encoder.calibrated = True
+                units = getattr(encoder, 'connected_units', None) or [calibrator.mmu_unit]
+                if len(units[0].encoders) > 1:
+                    mmu.log_always("Encoder calibration has been saved for encoder %s" % encoder.name)
+                else:
+                    mmu.log_always("Encoder calibration has been saved")
+                # A unit with an encoder per gate is calibrated once every one of them is
+                for unit in units:
+                    if all(e.calibrated for e in unit.encoders):
+                        unit.calibrator.calibration_status |= CALIBRATED_ENCODER
 
         except MmuError as ee:
             # Add some more context to the error and re-raise
