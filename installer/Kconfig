@@ -194,6 +194,7 @@ max_gate  := $(last-index,$(max_gates))
 mmu_has_sensor_toolhead := $(printer-flag,MMU_HAS_SENSOR_TOOLHEAD)
 mmu_has_sensor_extruder := $(printer-flag,MMU_HAS_SENSOR_EXTRUDER)
 mmu_has_toolhead_cutter := $(printer-flag,MMU_HAS_TOOLHEAD_CUTTER)
+printer_toolhead_qidi_plus4 := $(printer-flag,TOOLHEAD_TYPE_QIDI_PLUS4)
 
 # Used to dynamically get the serial device paths
 all_serial_devices  := $(shell, ls /dev/serial/by-id/* 2>/dev/null || true)

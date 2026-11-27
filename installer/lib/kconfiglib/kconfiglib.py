@@ -599,6 +599,8 @@ def expand_value_markup(kconf, text):
 # MMU_UNITS, KLIPPER_HOME, ...) cannot be renamed this way - that needs a
 # pass that rewrites the file itself.
 HH_RENAMED_SYMBOLS = {
+    # Preserve explicit hub choices while giving new defaults the HH default marker.
+    "OPTION_QIDI_BOX_BUFFER": "BOOL_QIDI_BOX_BUFFER",
     # v4.x: the Blobifier stepper dropped its "STEPPER" infix so the TMC
     # driver definitions could be shared with the gear and selector steppers.
     # The infix was never consistent - the chip-identity symbols

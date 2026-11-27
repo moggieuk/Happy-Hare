@@ -4,6 +4,8 @@
 # and what lands in the rendered files. Behaviour on a booted Plus4 is in
 # test/test_mmu_qidi_plus4.py.
 
+from pathlib import Path
+import tempfile
 import unittest
 
 from test.hh import cfg, profiles
@@ -45,12 +47,12 @@ class TestQidiPlus4Toolhead(unittest.TestCase):
 
     def test_plus4_box_reads_pb0_as_its_motion_sensor(self):
         # The Plus4 hub has a filament motion sensor on PB0, not the Q2/Max4 buffer
-        self.assertFalse(self.kconfig.is_enabled("OPTION_QIDI_BOX_BUFFER"))
+        self.assertFalse(self.kconfig.is_enabled("BOOL_QIDI_BOX_BUFFER"))
         self.assertTrue(self.kconfig.is_enabled("MMU_HAS_ENCODER"))
         self.assertFalse(self.kconfig.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
 
     def test_hub_buffer_can_still_be_chosen(self):
-        kconfig = _parse("qidi_plus4_buffer_hub", dict(PLUS4_ON_BOX, OPTION_QIDI_BOX_BUFFER=True))
+        kconfig = _parse("qidi_plus4_buffer_hub", dict(PLUS4_ON_BOX, BOOL_QIDI_BOX_BUFFER=True))
         self.assertTrue(kconfig.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
         self.assertFalse(kconfig.is_enabled("MMU_HAS_ENCODER"))
 
@@ -117,5 +119,95 @@ class TestQidiPlus4Toolhead(unittest.TestCase):
         self.assertGreater(entry, blade - gears)
         self.assertIn("toolhead_entry_to_extruder  : 22", self.machine)
 
-if __name__ == "__main__":
+
+
+class TestQidiPlus4HubDefaults(unittest.TestCase):
+
+    def _multi(self, toolhead='TOOLHEAD_TYPE_QIDI_PLUS4', buffer=None):
+        syms = {'MMU_TYPE_QIDI_BOX_1_0': True}
+        if buffer is not None:
+            syms['BOOL_QIDI_BOX_BUFFER'] = buffer
+        return profiles.Profile('qidi_hub_defaults', syms={toolhead: True}, units=[
+            profiles.UnitProfile('unit0', syms),
+            profiles.UnitProfile('unit1', syms, index=1)])
+
+    def _assert_hubs(self, rendered, buffer):
+        for unit in ('unit0', 'unit1'):
+            with self.subTest(unit=unit):
+                hardware = rendered['config/base/mmu_hardware_%s.cfg' % unit]
+                parsed = cfg.assemble({unit: hardware})
+                self.assertEqual(parsed.has_section('mmu_buffer ' + unit), buffer)
+                self.assertEqual(parsed.has_section('mmu_encoder ' + unit), not buffer)
+                section = ('mmu_buffer ' if buffer else 'mmu_encoder ') + unit
+                pin = 'tension_pin' if buffer else 'encoder_pin'
+                self.assertEqual(parsed.get(section, pin), '^%s:PB0' % unit)
+
+    def test_multi_unit_plus4_defaults_each_box_to_motion_sensor(self):
+        # The toolhead is chosen in the parent, not in the per-unit parses.
+        self._assert_hubs(cfg.render_via_files(self._multi()), buffer=False)
+
+    def test_multi_unit_hub_overrides_survive_saved_config_render(self):
+        for toolhead, buffer in [('TOOLHEAD_TYPE_QIDI_PLUS4', True),
+                                 ('TOOLHEAD_TYPE_QIDI_Q2', False)]:
+            with self.subTest(toolhead=toolhead):
+                self._assert_hubs(cfg.render_via_files(self._multi(toolhead, buffer)), buffer)
+
+    def test_parent_toolhead_changes_invalidate_cached_unit_parses(self):
+        # Reuse the same unit configuration with a different parent selection.
+        for toolhead, buffer in [('TOOLHEAD_TYPE_QIDI_PLUS4', False),
+                                 ('TOOLHEAD_TYPE_QIDI_Q2', True),
+                                 ('TOOLHEAD_TYPE_QIDI_PLUS4', False)]:
+            self._assert_hubs(cfg.render(self._multi(toolhead)), buffer)
+
+    def test_saved_default_follows_a_later_toolhead_selection(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.NamedTemporaryFile() as saved:
+            kc = cfg._kconfig('qidi_saved_hub', {'MMU_TYPE_QIDI_BOX_1_0': True})
+            kc.write_config(saved.name)
+            with open(saved.name) as handle:
+                self.assertIn('CONFIG_BOOL_QIDI_BOX_BUFFER=y #~DEFAULT~#', handle.read())
+            kc.load_config(saved.name, filter_defaults=True)
+            kc.syms['TOOLHEAD_TYPE_QIDI_PLUS4'].set_value(2)
+            self.assertFalse(kc.is_enabled('BOOL_QIDI_BOX_BUFFER'))
+            self.assertTrue(kc.is_enabled('MMU_HAS_ENCODER'))
+            kc.write_config(saved.name)
+            kc.load_config(saved.name, filter_defaults=True)
+            kc.syms['TOOLHEAD_TYPE_QIDI_Q2'].set_value(2)
+            self.assertTrue(kc.is_enabled('BOOL_QIDI_BOX_BUFFER'))
+            self.assertFalse(kc.is_enabled('MMU_HAS_ENCODER'))
+
+    def test_explicit_saved_hub_choices_still_override_toolhead_defaults(self):
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.NamedTemporaryFile() as saved:
+            for buffer, toolhead in [(True, 'TOOLHEAD_TYPE_QIDI_PLUS4'),
+                                     (False, 'TOOLHEAD_TYPE_QIDI_Q2')]:
+                with self.subTest(buffer=buffer):
+                    kc = cfg._kconfig('qidi_explicit_hub', dict(
+                        PLUS4_ON_BOX, BOOL_QIDI_BOX_BUFFER=buffer))
+                    kc.write_config(saved.name)
+                    kc.load_config(saved.name, filter_defaults=True)
+                    kc.syms[toolhead].set_value(2)
+                    self.assertEqual(kc.is_enabled('BOOL_QIDI_BOX_BUFFER'), buffer)
+
+    def test_legacy_hub_choices_migrate_without_changing_hardware(self):
+        # Old OPTION_ saves do not distinguish an accepted default from an explicit
+        # choice. Preserve both y and n; do not guess and change installed hardware.
+        with cfg._env(cfg._SINGLE_UNIT_ENV), tempfile.TemporaryDirectory() as tmp:
+            saved = Path(tmp) / '.mmu_config'
+            for buffer in (True, False):
+                for filter_defaults in (True, False):
+                    with self.subTest(buffer=buffer, filter_defaults=filter_defaults):
+                        saved.write_text('CONFIG_MMU_TYPE_QIDI_BOX_1_0=y\n'
+                                         'CONFIG_TOOLHEAD_TYPE_QIDI_PLUS4=y\n' +
+                                         ('CONFIG_OPTION_QIDI_BOX_BUFFER=y\n' if buffer else
+                                          '# CONFIG_OPTION_QIDI_BOX_BUFFER is not set\n'))
+                        kc = cfg._new_kconfig('qidi_legacy_hub')
+                        kc.load_config(str(saved), filter_defaults=filter_defaults)
+                        self.assertEqual(kc.is_enabled('BOOL_QIDI_BOX_BUFFER'), buffer)
+                        self.assertEqual(kc.is_enabled('MMU_HAS_SYNC_FEEDBACK_BUFFER'), buffer)
+                        self.assertEqual(kc.is_enabled('MMU_HAS_ENCODER'), not buffer)
+                        kc.write_config(str(saved))
+                        kc.load_config(str(saved), filter_defaults=True)
+                        self.assertEqual(kc.is_enabled('BOOL_QIDI_BOX_BUFFER'), buffer)
+
+
+if __name__ == '__main__':
     unittest.main()

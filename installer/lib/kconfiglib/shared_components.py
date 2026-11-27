@@ -67,7 +67,8 @@ KINDS = {
 }
 
 # Printer-level capabilities every unit takes from the top-level config (the printer owns them)
-PRINTER_FLAGS = ("MMU_HAS_SENSOR_TOOLHEAD", "MMU_HAS_SENSOR_EXTRUDER", "MMU_HAS_TOOLHEAD_CUTTER")
+PRINTER_FLAGS = ("MMU_HAS_SENSOR_TOOLHEAD", "MMU_HAS_SENSOR_EXTRUDER", "MMU_HAS_TOOLHEAD_CUTTER",
+                 "TOOLHEAD_TYPE_QIDI_PLUS4")
 
 Owner = collections.namedtuple("Owner", "unit name values")
 
