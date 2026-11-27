@@ -520,7 +520,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertGreater(cutter['blade_pos'], unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
 
         model = hh.filament()
-        self.assertEqual(model.layout['mmu_entry'], -150)
+        self.assertEqual(model.layout['mmu_entry'], -400)
         self.assertEqual(model.layout['mmu_shared_exit'], 150)
         self.assertEqual(model.layout['extruder'], 876)
         self.assertEqual(model.layout['toolhead'], 897)
@@ -1597,6 +1597,20 @@ class TestSelectorMicrosteps(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestServoCutterAtMmu(unittest.TestCase):
+    def test_a_toolchange_cuts_the_unloaded_filament_at_the_mmu(self):
+        hh = session('ercf_mmu_cutter')
+        self.addCleanup(hh.close)
+        hh.boot(calibrate=True, gates_loaded_at=TIP_AT_GATE, prime=True)
+        self.assertTrue(hh.mmu.has_mmu_cutter)
+        self.assertEqual(hh.mmu.p.form_tip_macro, '')
+        hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.assertNotIn('Servo cutter closed', ' '.join(hh.console).replace('\xa0', ' '))
+        hh.run_gcode('MMU_CHANGE_TOOL TOOL=1')
+        self.assertIn('Servo cutter closed', ' '.join(hh.console).replace('\xa0', ' '))
+        self.assertEqual(hh.mmu.gate_selected, 1)
 
 
 class TestErcfQuattroBox(unittest.TestCase):

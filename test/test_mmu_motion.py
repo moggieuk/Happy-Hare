@@ -14,10 +14,9 @@
 #   - TOOLHEAD extrusion: its E-axis delta advances filament only while the MMU gear is
 #     synchronized to the extruder, matching print-time movement.
 #
-# Geometry is the model's DEFAULT_LAYOUT: park -100, entry -50, gate/exit 0. The entry
-# switch sits BETWEEN the park point and the gate sensor, so a parked filament leaves it
-# clear - which is what Happy Hare requires (its preload failure tail marks a gate
-# GATE_UNKNOWN when the entry switch is still covered afterwards).
+# Geometry is the model's DEFAULT_LAYOUT: entry -150, park -100, gate/exit 0. The entry
+# switch sits upstream of the gear and the park point, so a parked filament keeps it
+# covered.
 #
 # REALISTIC STARTING POSITIONS MATTER. A gate can only be preloaded from a state where
 # the filament is ALREADY past the entry switch, because that is what a user pushing

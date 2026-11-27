@@ -116,6 +116,12 @@ class ToolHead:
     def get_last_move_time(self):
         return self._print_time()
 
+    def check_busy(self, eventtime):
+        est_print_time = self.mcu.estimated_print_time(eventtime)
+        # The simulator sets last_move_time; without it the toolhead has always just moved
+        last = getattr(self, 'last_move_time', None)
+        return est_print_time if last is None else last, est_print_time, True
+
     def flush_step_generation(self):
         self.flushes += 1
 
@@ -144,22 +150,26 @@ class ToolHead:
             if err:
                 raise self.printer.command_error(err)
         self.moves.append((list(newpos), speed))
+        travel = sum((a - b) ** 2 for a, b in zip(newpos[:3], self.commanded_pos[:3])) ** .5
         old_extruder_pos = self.commanded_pos[3]
         self.commanded_pos = list(newpos)
         distance = self.commanded_pos[3] - old_extruder_pos
         extruder_stepper = getattr(self.extruder, 'extruder_stepper', None)
-        if distance and extruder_stepper is not None:
-            stepper = extruder_stepper.stepper
-            stepper.set_commanded_position(stepper.get_commanded_position()+distance)
-            # Viewer motor totals come from the drive observer, once per move.
-            stepper.harness_note_motion(distance)
         if hasattr(self.extruder, 'last_position'):
             self.extruder.last_position = self.commanded_pos[3]
         mq = self.printer.lookup_object('motion_queuing', None)
-        if mq is not None:
-            note_move = getattr(mq, 'note_toolhead_move', None)
+        note_move = getattr(mq, 'note_toolhead_move', None)
+        # The simulator lets a move take the time its speed implies (acceleration aside),
+        # feeding the extruder along as it goes; elsewhere it is one step and no time.
+        if getattr(self.printer, 'harness_pace_toolhead', False) and mq is not None and speed > 0.:
+            shares = mq.pace_move(max(travel, abs(distance)) / speed, distance)
+        else:
+            shares = (distance,)
+        for share in shares:
+            if share and extruder_stepper is not None:
+                extruder_stepper.stepper.harness_note_motion(share)
             if note_move is not None:
-                note_move(distance)
+                note_move(share)
 
     def manual_move(self, coord, speed):
         newpos = list(self.commanded_pos)
@@ -175,9 +185,14 @@ class ToolHead:
         self.waits += 1
 
     def cmd_G4(self, gcmd):
-        # Recorded, not waited: the virtual clock only moves when the harness advances it
+        # Recorded, and waited only where the simulator paces toolhead moves: otherwise the
+        # virtual clock only moves when the harness advances it
         delay = gcmd.get_float('P', 0., minval=0.) / 1000.
         self.dwell(delay)
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if getattr(self.printer, 'harness_pace_toolhead', False) and mq is not None:
+            for _ in mq.pace_move(delay, 0.):
+                pass
 
     def cmd_M400(self, gcmd):
         self.wait_moves()

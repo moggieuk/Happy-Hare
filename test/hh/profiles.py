@@ -23,20 +23,23 @@ class UnitProfile:
     index must match the unit's position in Profile.units: it becomes UNIT_INDEX, which
     Kconfig.name:6 uses to build the default display name ('BoxTurtle-0', 'VVD-1', ...).
     mcu_name defaults to name, as it does in install.sh:421-422.
+    filament_layout overrides the profile's simulator geometry for this unit's gates.
     """
 
-    def __init__(self, name, syms=None, index=0, mcu_name=None):
+    def __init__(self, name, syms=None, index=0, mcu_name=None, filament_layout=None):
         self.name = name
         self.syms = dict(syms or {})
         self.index = index
         self.mcu_name = mcu_name or name
+        self.filament_layout = dict(filament_layout or {})
 
-    def derive(self, name=None, syms=None, index=None, mcu_name=None):
+    def derive(self, name=None, syms=None, index=None, mcu_name=None, filament_layout=None):
         merged = dict(self.syms)
         merged.update(syms or {})
         return UnitProfile(name or self.name, merged,
                            self.index if index is None else index,
-                           mcu_name or self.mcu_name)
+                           mcu_name or self.mcu_name,
+                           self.filament_layout if filament_layout is None else filament_layout)
 
     def __repr__(self):
         return 'UnitProfile(%r)' % (self.name,)
@@ -570,7 +573,11 @@ QIDI = Profile(
     # Keep a compact simulated internal leg and ~750 mm hub-to-extruder leg.
     # Preload uses the production homing limit to find the shared hub sensor,
     # then retracts to park clear of the shared path.
+    # The gear turns the spool to scan its tag, retracting up to 480 mm from the
+    # hub, so the entry switch has to sit further upstream than that.
     filament_layout={
+        'mmu_pre_gate': -400.0,
+        'mmu_entry': -400.0,
         'mmu_shared_exit': 150.0,
         'extruder_entry': 900.0,
         'filament_compression': 900.0,
@@ -882,7 +889,10 @@ ERCF_VVD = Profile(
             # gate is expressed, and is what the attribution debt exists for
             'MMU_HAS_TD1': True,
             'PARAM_TD1_BOWDEN_DEVICE': 'TD1-VVD',
-        }),
+        },
+            # The gear turns the spool to scan its tag, retracting up to 300 mm from
+            # the gate, so the entry switch has to sit further upstream than that.
+            filament_layout={'mmu_pre_gate': -400.0, 'mmu_entry': -400.0}),
     ],
     # Non-identity maps, so the console starts with something to look at in MMU_TTG_MAP and
     # MMU_ENDLESS_SPOOL_GROUPS and RESET=1 has a configured default to restore:
@@ -1059,6 +1069,34 @@ BOXTURTLE2_ERCF = Profile(
     description='2 x BoxTurtle 1.0 (4 gates each, VirtualSelector) + ERCF 1.1sb (8 gates, encoder)')
 
 
+# A single ERCF whose only cutter is at the MMU: no tip is formed or cut at the toolhead, and
+# the servo cutter trims each unloaded filament as the post-unload extension.
+ERCF_MMU_CUTTER = Profile(
+    'ercf_mmu_cutter',
+    syms={
+        'MMU_FAMILY_ERCF': True,
+        'MMU_TYPE_ERCF_1_1': True,
+        'BOARD_TYPE_ERB_1': True,
+        'PARAM_NUM_GATES': 8,
+        'MOD_BINKY': True,
+        'MOD_SPRINGY': True,
+        'CHOICE_ENCODER_TYPE_BINKY_12': True,
+        'MMU_HAS_SENSOR_ENTRY': True,
+        'SERVO_TYPE_SAVOX_SH0255MG': True,
+        'PARAM_SERVO_MAX_ANGLE': 180,
+        'CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER': True,
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+        'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        'CHOICE_FORM_TIP_MACRO_SLICER': True,
+        'MMU_HAS_SERVO_CUTTER': True,
+        'PIN_SERVO_CUTTER_SERVO': 'PG15',
+        'VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION': 'SERVO_CUTTER_ACTION',
+    },
+    description='ERCF 1.1sb (8 gates, encoder) with a servo cutter at the MMU and no tip forming')
+
 TRADRACK_MAX_GATES = TRADRACK.derive(
     'tradrack_max_gates',
     syms=dict({'PARAM_NUM_GATES': MAX_GATES,
@@ -1081,7 +1119,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE2_ERCF, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE2_ERCF, ERCF_MMU_CUTTER, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
                     QUATTROBOX_V2, EMU, EMU_EBB, EMU_EMB_C, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,

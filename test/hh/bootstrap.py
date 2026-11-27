@@ -17,6 +17,10 @@ from .root import install
 
 # extras/mmu/mmu_constants.py:69 - bootup is scheduled this far out
 BOOT_DELAY = 2.5
+# Passed as gates_loaded_at: each gate's filament where a preload leaves it
+AT_PRELOAD_PARK = 'preload park'
+# Where a user's push leaves a filament: past the entry switch, short of the gate
+TIP_AT_GATE = -40.0
 
 # What a user's real printer.cfg provides and the HH templates deliberately do not.
 #
@@ -560,6 +564,9 @@ class Session:
         # unit's filament - see FilamentPath.gates_visible_to.
         model.units = {u.name: (u.first_gate, u.num_gates)
                        for u in self.mmu.mmu_machine.units}
+        model.unit_layout = {u.name: u.filament_layout
+                             for u in getattr(self.profile, 'units', None) or ()
+                             if u.filament_layout}
         def set_buffer_value(name, value):
             buffer = next(u.buffer for u in self.mmu.mmu_machine.units
                           if u.buffer is not None and u.buffer.name == name)
@@ -605,10 +612,14 @@ class Session:
         # This read-only utility is useful specifically in the interactive console. Run its
         # real Jinja body so it can enumerate the harness's live get_status() dictionaries;
         # ordinary choreography macros remain recorded no-ops.
-        effects.setdefault('MMU_DUMP_VARS', self._effect_dump_vars)
+        effects.setdefault('MMU_DUMP_VARS', self._effect_run_body)
+        # The servo cutter at the MMU is real commands and servo moves hung off the post-unload
+        # hook, so its bodies run too; the hook itself is empty unless an extension is set.
+        for name in ('_MMU_POST_UNLOAD', 'SERVO_CUTTER_ACTION', '_CUTTER_OPEN', '_CUTTER_CLOSE'):
+            effects.setdefault(name, self._effect_run_body)
         return effects
 
-    def _effect_dump_vars(self, macro, gcmd):
+    def _effect_run_body(self, macro, gcmd):
         gcode_macro = self.printer.lookup_object('gcode_macro')
         context = gcode_macro.create_template_context()
         context.update({
@@ -760,7 +771,6 @@ class Session:
         # HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
         # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position
         # alone is not enough - it is mcu-preserving, by design (klippy_root/stepper.py)
-        stepper.set_position([stepper.get_commanded_position() + amount, 0., 0., 0.])
         stepper.harness_note_motion(amount)
 
     def calibrate(self):
@@ -1052,7 +1062,7 @@ class Session:
         return self
 
     def _note_drive_motion(self, gate, distance, toolhead=False):
-        """Account for physical motor travel without duplicating viewer drive totals."""
+        """Account for physical motor travel without duplicating Happy Hare Console drive totals."""
         from extras.mmu.mmu_constants import (DRIVE_EXTRUDER_ONLY,
             DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         drive = self.mmu.drive(gate)
@@ -1387,6 +1397,23 @@ class Session:
             self.printer.send_event('klippy:ready')
         return self
 
+    def preload_park(self, gate):
+        """
+        Where a preload leaves this gate's filament: gate_preload_parking_distance from the
+        preload endstop. A printer that restarts with filament in its gates finds it there.
+        """
+        params = self.mmu.mmu_unit(gate).p
+        endstop = params.gate_preload_endstop or params.gate_homing_endstop
+        model = self.filament()
+        landmark = 'mmu_encoder' if endstop == 'encoder' else endstop
+        if landmark not in model.layout:
+            return TIP_AT_GATE
+        park = model.landmark(landmark, gate) + params.gate_preload_parking_distance
+        # A gate's own park is short of the hub: the default layout puts the shared exit only 10mm on
+        if endstop != 'mmu_shared_exit' and park >= model.landmark('mmu_shared_exit', gate):
+            park = model.landmark('mmu_shared_exit', gate) - 1.
+        return park
+
     def seed_loaded_gates(self, tip_position, status=None):
         """
         Put filament at every gate and persist an 'available' map, BEFORE klippy:ready.
@@ -1421,14 +1448,16 @@ class Session:
         """
         # NOT the selected gate/tool: that is seed_selection()'s job, and it has its own rules
         # about pairing with seed_selector_last_pos().
-        from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, GATE_EMPTY, VARS_MMU_GATE_STATUS
+        seeded_status = GATE_AVAILABLE if status is None else status
+        if not isinstance(seeded_status, (list, tuple)):
+            seeded_status = [seeded_status] * self.mmu.num_gates
         model = self.filament()
         for gate in range(self.mmu.num_gates):
-            model.place(gate, tip_position)
-        seeded_status = GATE_AVAILABLE if status is None else status
-        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
-                                 [seeded_status] * self.mmu.num_gates)
-        self.mmu.p.default_gate_status[:] = [seeded_status] * self.mmu.num_gates
+            if seeded_status[gate] != GATE_EMPTY:
+                model.place(gate, self.preload_park(gate) if tip_position is AT_PRELOAD_PARK else tip_position)
+        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, list(seeded_status))
+        self.mmu.p.default_gate_status[:] = list(seeded_status)
         return self
 
     def seed_selection(self, gate, tool=None):
@@ -1520,7 +1549,7 @@ class Session:
                 homed.append(unit.name)
         return homed
 
-    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, gate_status=None, prime=False, seed=0,
              pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None,
              sensors_disabled=None):
         """
@@ -1536,7 +1565,9 @@ class Session:
 
         gates_loaded_at=<tip position> is the same idea for the gate map - see
         seed_loaded_gates(). Only the console passes it, and only when it is about to preload
-        every gate anyway.
+        every gate anyway. gate_status is a callable giving the status to persist for each gate
+        (called after priming, so it can read the spool weights); a gate it marks empty gets no
+        filament.
 
         prime=True is the same idea again, for the filament ATTRIBUTES - see prime_gate_map().
         Also before ready, and for the same reason: __MMU_BOOTUP prints the gate/filament table,
@@ -1592,7 +1623,7 @@ class Session:
             if prime:
                 self.primed = self.prime_gate_map(seed=seed)
             if gates_loaded_at is not None:
-                self.seed_loaded_gates(gates_loaded_at)
+                self.seed_loaded_gates(gates_loaded_at, gate_status() if gate_status else None)
             if selected_gate is not None:
                 self.seed_selection(selected_gate, selected_tool)
             if selector_last_pos is not None:

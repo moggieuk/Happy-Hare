@@ -10,8 +10,10 @@ import configparser
 import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
+import uuid
 from unittest.mock import patch
 
 import sequence_edit
@@ -44,9 +46,10 @@ BUFFER_SHARER = BUFFER_OWNER + ["CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y"]
 class Scratch(unittest.TestCase):
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = self.tmp.name
+        # Not tempfile's random name: one ending "_a" reads as unit "a" in the saved config path
+        self.root = os.path.join(tempfile.gettempdir(), "hhmigration" + uuid.uuid4().hex)
+        os.mkdir(self.root)
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.kconfig = os.path.join(self.root, ".mmu_config")
         self.home = os.path.join(self.root, "config")
         os.makedirs(os.path.join(self.home, "mmu", "base"))

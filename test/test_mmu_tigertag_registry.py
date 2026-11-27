@@ -300,9 +300,21 @@ class TestSwitch(unittest.TestCase):
         self.assertIsNone(self.server._tigertag_task)
 
     def test_close_stops_the_job(self):
+        import asyncio
+
         self.klipper_ready('1')
+        registry_task = self.server._tigertag_task
+
+        async def start_live_task():
+            self.server._live_task = asyncio.create_task(asyncio.sleep(3600))
+
+        self.hh.run(start_live_task())
+        live_task = self.server._live_task
         self.hh.run(self.server.close())
+        self.hh.run(asyncio.sleep(0))
         self.assertIsNone(self.server._tigertag_task)
+        self.assertTrue(registry_task.cancelled())
+        self.assertTrue(live_task.cancelled())
 
 
 class TestCacheFollowsKlipperConfig(unittest.TestCase):

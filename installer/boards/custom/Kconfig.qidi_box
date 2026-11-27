@@ -14,7 +14,8 @@ if BOARD_TYPE_QIDI_BOX_2_0
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice
   choice CHOICE_MMU_SERIAL_CONNECTION
-    # Stock firmware: usb-Klipper_QIDI_BOX_V2_*
+    # Stock firmware, either board revision: usb-Klipper_QIDI_BOX_V1_* or
+    # usb-Klipper_QIDI_BOX_V2_* (serial_device matches on "Klipper_QIDI_BOX")
     default $(mmu_serial_config,1,QIDI_BOX) if $(serial_exists,1,QIDI_BOX)
     # Mainline firmware: usb-Klipper_stm32f401xc_*
     default $(mmu_serial_config,1,stm32f401xc) if $(serial_exists,1,stm32f401xc)
@@ -62,8 +63,13 @@ if BOARD_TYPE_QIDI_BOX_2_0
 
   config PIN_SHARED_EXIT_SENSOR
     default "^!$(MCU_NAME):PB1"
+
+  # PB0 is the hub's buffer tension switch (Q2/Max4 hub) or its filament
+  # motion sensor (Plus4 hub, stock config: [filament_motion_sensor] on PB0)
   config PIN_BUFFER_TENSION
-    default "^$(MCU_NAME):PB0"
+    default "^$(MCU_NAME):PB0" if OPTION_QIDI_BOX_BUFFER
+  config PIN_ENCODER
+    default "^$(MCU_NAME):PB0" if !OPTION_QIDI_BOX_BUFFER
 
   # The filament switch is on the printer's THR head MCU, not this board.
   config PIN_EXTRUDER_SENSOR

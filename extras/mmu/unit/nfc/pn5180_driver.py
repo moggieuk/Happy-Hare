@@ -619,6 +619,9 @@ class PN5180Core:
                     continue
                 if tlv_type == 0xFE:
                     return position
+                # Not a valid TLV type, so not NDEF (e.g. TigerTag): don't cut the read short
+                if tlv_type not in (0x01, 0x02, 0x03, 0xFD):
+                    break
                 if position >= len(data):
                     break
                 length = data[position]

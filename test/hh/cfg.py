@@ -544,6 +544,22 @@ def _includes_from_printer_cfg(path):
     return out
 
 
+def install_version_problem(texts):
+    """Why these installed config files cannot boot under this version of Happy Hare, or None."""
+    with open(os.path.join(REPO_ROOT, 'extras', 'mmu', 'mmu_constants.py'), encoding='utf-8') as f:
+        current = re.search(r'(?m)^VERSION = "([\d.]+)"', f.read()).group(1)
+    texts = list(texts)
+    found = [m.group(1) for t in texts for m in re.finditer(r'(?m)^\s*happy_hare_version\s*[:=]\s*([\d.]+)', t)]
+    release = lambda version: tuple(int(n) for n in (version.split('.') + ['0'])[:2])
+    if found and release(found[0]) >= release(current):
+        return None
+    if not found and any(re.search(r'(?m)^\[mmu_machine\]', t) for t in texts):
+        return None
+    return ('This configuration is from Happy Hare %s. The simulator runs %s and needs a configuration '
+            'written by its installer: upgrade it with ./install.sh first.'
+            % (found[0] if found else 'before version 4', current))
+
+
 def load_install_dir(profile):
     """
     Read an installed Happy Hare config into the same ordered {name: text} shape render()
@@ -591,6 +607,9 @@ def load_install_dir(profile):
     if not out:
         raise AssertionError('no config files found under %s for %s'
                              % (root, ', '.join(patterns)))
+    problem = install_version_problem(out.values())
+    if problem:
+        raise AssertionError(problem)
     first = next(iter(out))
     if not first.endswith('mmu.cfg'):
         raise AssertionError(

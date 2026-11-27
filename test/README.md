@@ -262,7 +262,7 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
 | `/scroll [N]`, `/s` | scroll back through the log (see below) |
 | `/sensors` | the sensor table (also `MMU_SENSORS`) |
-| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one) |
+| `/buffer [NAME] [RANGE=mm] [MAXRANGE=mm] [SPRING=none\|tension\|neutral\|compression]` | show or change a sync-feedback buffer by object name (omit NAME when there is one); the Happy Hare Console follows the change |
 | `/encoder [NAME] [RESOLUTION=mm] …` | show or change an encoder's runtime numeric settings; `/encoder NAME` lists them |
 | `/web` | where the web API is and how to point Mainsail or Fluidd at it |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
@@ -383,9 +383,9 @@ Useful flags — `make console ARGS='...'`:
 --no-preload                   # leave every gate empty
 --no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
 --no-prime                     # leave the gate map blank instead of filling it in
---seed N                       # seed for the primed gate map (default 0, reproducible)
+--seed N                       # seed for the primed gate map (default: new each start, printed; 0 with --script)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
---serve [PORT]                 # choose the web API's port (default 7125); on by default at a terminal
+--serve [PORT]                 # choose the web API's port (default 7125, or the next free port); on by default at a terminal
 --serve-host ADDRESS          # listening address (default 127.0.0.1)
 --no-serve                     # don't serve the web API for Mainsail/Fluidd
 --pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
@@ -402,8 +402,11 @@ Two more things happen at startup that a printer does for itself and a frozen cl
 
 - **The gate map is primed** — every gate gets a vendor, material, color and temperature, so
   the gate table and the LED `filament_color` effect have something to show instead of
-  `Unknown | 200C | Unknown`. Seeded, so a session is reproducible; `--seed N` for a different
-  spread, `--no-prime` for none.
+  `Unknown | 200C | Unknown`. An interactive session picks a new seed each start and prints
+  it; `--seed N` repeats a spread, a `--script` run uses seed 0, and `--no-prime` gives none.
+  With a seed (so not under `--script` unless `--seed` is given), the machine is also left as
+  a used one is found: a spool with no weight left has no filament at its gate and reads
+  EMPTY, and one or two other gates read UNKNOWN until `MMU_CHECK_GATE` looks.
 - **`effect_initialized` is waited out.** It is a unit-wide 8s state flash from bootup, and
   while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
@@ -454,6 +457,14 @@ and wiping over that span, so dividing the net distance by any one of the macro'
 badly understates it (`unloading_speed_start` put the whole retract at 0.5s). A round number is
 the honest answer for work that is deliberately not modelled.
 
+**In the interactive simulator those bodies do run**, along with the cut and purge macros,
+and there every toolhead move (`G0`-`G3`, the move back from a parked position) and `G4`
+dwell takes the time its own speed gives it: the longer of the XYZ and extruder distances
+over the feedrate, acceleration aside, with the extruder fed along as it goes. So a purge
+lasts as long as its `G1 E` moves say, not a round number. Moves issued from inside a
+reactor callback are still immediate, and a `/print` job times its own moves in batches
+instead of one by one. The unit-test harness does none of this.
+
 Note the log still arrives in **blocks**, because Happy Hare only logs at operation-step
 boundaries, not continuously. The header is what moves during a long move.
 
@@ -481,16 +492,16 @@ command returns, so stamping there gave every line of a load the same end-of-com
 23:05:53 [T9] ███◉██████████ ... LOADED 801.8mm
 ```
 
-The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
-table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on
-screen when the prompt appears — so it used to report the whole machine unknown about one
-that is fully loaded. `Session.seed_loaded_gates()` places filament at every gate and
-persists `mmu_state_gate_status` before `klippy:ready`, which is exactly the state a real
-printer restores from `mmu_vars.cfg`. Both halves are needed: the persisted map is the only
-source for a unit with no per-gate switches (ERCF), and it is not enough for one that has
-them (ViViD re-derives its gates from `mmu_entry_9..12` at bootup and would overwrite a
-seeded map with `GATE_EMPTY`). `--no-preload` and `--no-calibrate` skip it, so a cold start
-is still a cold start.
+The **starting state of the gates is set before bootup too**, as a printer that was used
+yesterday has it: `Session.seed_loaded_gates()` places each gate's filament where a preload
+leaves it (`gate_preload_parking_distance` from the preload endstop) and persists
+`mmu_state_gate_status` before `klippy:ready`. Bootup then checks the persisted map against
+the sensors exactly as it does on a printer, and nothing is preloaded afterwards. With
+`--seed` the persisted map is a used machine's: a spent spool's gate is empty (and has no
+filament), and one or two stocked gates are unknown. Bootup resolves an unknown gate whose
+exit sensor sees the filament; on a unit with nothing to see it (ERCF), it stays unknown
+until `MMU_CHECK_GATE`. `--no-preload` and `--no-calibrate` skip it, so a cold start is
+still a cold start.
 
 Lines the **console itself** adds are dimmed and prefixed `#`, so there is never a question
 about which of them came off the MMU:
@@ -546,6 +557,10 @@ What is simulated:
 
 - **The print lifecycle.** `print_stats` and `idle_timeout` move as `virtual_sdcard` would
   move them, so Happy Hare's automatic job start/end detection runs for real.
+- **The idle timeout.** Outside a job, any command leaves `idle_timeout` Ready with the
+  timeout counting from then, and a held job is Ready too. When it expires (on the live
+  clock or `/advance`) the extruder heater goes off and the state returns to Idle. The
+  unit-test harness does none of this: there the state only moves when a test sets it.
 - **Macro bodies.** Configured `T<n>` macros run their real Jinja in both consoles
   and during jobs, delegating to `MMU_CHANGE_TOOL`. `MMU_START_SETUP`, `MMU_START_CHECK`,
   `MMU_START_LOAD_INITIAL_TOOL` and `MMU_END` are additionally enabled during jobs.
@@ -578,6 +593,17 @@ echo '/print job' > /tmp/job.txt
 make console ARGS='--profile boxturtle --script /tmp/job.txt'
 ```
 
+### Happy Hare Console
+
+`make console` also serves the Happy Hare Console on the same local web API: open
+`http://127.0.0.1:7125/sim/console/`, or the address printed in the console banner.
+`--no-serve` disables both it and the web API. It is a repository of its own,
+[Happy-Hare-Console](https://github.com/moggieuk/Happy-Hare-Console), that the simulator only hosts. Clone it beside this checkout (so that
+`../Happy-Hare-Console/console` exists), or set `HH_CONSOLE_DIR` to the `console` folder of a
+checkout elsewhere; without it the address explains what to do. The telemetry it replays is
+described in `extras/mmu/telemetry/README.md`. Tests: `make test UT=test_mmu_console_support.py`,
+plus the console, web API and telemetry suites.
+
 ### Driving a real Mainsail or Fluidd — the web API
 
 At a terminal, the console also serves a Moonraker-compatible API on `http://127.0.0.1:7125`
@@ -594,7 +620,9 @@ Web API (for Mainsail/Fluidd): host 127.0.0.1  port 7125  (http://127.0.0.1:7125
 It is a development and documentation aid for seeing what the web UIs really do with Happy
 Hare, such as the pause dialog; it is not a Moonraker clone. A method the UI asks for that is
 not served gets a JSON-RPC error, and `http://127.0.0.1:7125/sim/unsupported` lists them.
-`--no-serve` turns it off, and `--serve PORT` picks the port. Scripts and tests never start
+`--no-serve` turns it off, and `--serve PORT` picks the port. When the default port is in use
+(a real Moonraker on the same machine, say) the next free one is used and the banner warns;
+a port named with `--serve` is never changed. Scripts and tests never start
 it unless `--serve` is given, so they cannot fight over the port.
 
 Point Mainsail at it by running its dev server with that address, from a Mainsail checkout:
@@ -617,7 +645,8 @@ interfaces; remote clients still use the simulator computer's LAN address. The d
 remains localhost only. The simulator API has no authentication, so use LAN access only
 on a trusted network. The bridge refuses requests whose `Origin` is a page from another site, and
 whose `Host` is not this machine (DNS rebinding), so a web page you happen to visit cannot drive the
-simulator; pages served from localhost, or from the address given to `--serve-host`, can.
+simulator; pages served from localhost, or from the address given to `--serve-host`, can. The Happy Hare Console
+and Mainsail can connect simultaneously.
 
 To see the pause dialog, pretend a print is running and make something fail:
 
@@ -872,7 +901,7 @@ The test files, grouped by what they're about:
 | `test_mmu_profiles.py` | 43 | the same checks across the bootable machine profiles |
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
 | `test_mmu_buttons_compat.py` | 1 | switch sensors on Klipper without `register_debounce_button` |
-| `test_mmu_hall_endstop.py` | 5 | the hall-effect `[mmu_toolhead]` endstop booting on ADC pins and following their readings |
+| `test_mmu_hall_endstop.py` | 6 | the hall-effect `[mmu_toolhead]` endstop booting on ADC pins and following their readings |
 | **Filament handling** | | |
 | `test_mmu_motion.py` | 56 | loading, parking, preloading filament |
 | `test_mmu_toolchange.py` | 30 | `MMU_CHANGE_TOOL`, load and unload end to end |
@@ -898,7 +927,8 @@ The test files, grouped by what they're about:
 | `test_mmu_print_job.py` | 10 | `/print job` end to end, molding the built-in job, and the fake G-code it needs: parsing, extrusion modes, the extruder heater |
 | `test_mmu_webui_bridge.py` | 16 | the Moonraker-compatible web API the console serves: handshake, status, gcode, the pause dialog reaching a UI, and refusing cross-site pages, oversized bodies and unmasked frames |
 | `test_mmu_simulator_telemetry.py` | 7 | the simulator's telemetry capture, real macros and the bridge |
-| `test_mmu_live_status.py` | 14 | the status objects the viewer subscribes to |
+| `test_mmu_console_support.py` | 13 | the Happy Hare Console's hosting by the simulator: parameter editor, serving the Console's checkout, profile restart and upload |
+| `test_mmu_live_status.py` | 14 | the status objects the Happy Hare Console subscribes to |
 | `test_mmu_movement_telemetry.py` | 20 | movement start/outcome pairs, toolchange start/end markers, and the replay state around them |
 | `test_mmu_gcode_telemetry.py` | 24 | G1 extrusion and MMU command scopes |
 | `test_mmu_selector_telemetry.py` | 6 | selector motion, servo and homing records |
@@ -968,7 +998,7 @@ when it sits inside that span. When Happy Hare commands a move, the harness work
 sensor trips first and how far the filament actually gets. Default layout:
 
 ```
-spool ... park(-100) ... entry(-50) ... gate/exit(0) ... encoder(+20) ... extruder(+700)
+spool ... entry(-150) ... park(-100) ... gate/exit(0) ... encoder(+20) ... extruder(+700)
 ```
 
 The tail is normally infinitely far back — a spool is attached, so anything behind the tip
@@ -993,7 +1023,7 @@ keep its downstream tip stationary and change buffer travel instead. Travel is b
 `buffer_maxrange`; additional displacement is retained as unabsorbed compression or tension,
 so reversal takes up that excess before the buffer leaves its stop. Equal gear/extruder
 movement leaves the buffer unchanged. Simulated physical buffer switches have 2mm of release hysteresis;
-proportional buffers retain their configured virtual-switch thresholds. The viewer shows travel and any unabsorbed displacement
+proportional buffers retain their configured virtual-switch thresholds. The Happy Hare Console shows travel and any unabsorbed displacement
 in millimeters, not force. Without a modeled buffer, relative displacement is reported but
 no Bowden spring is simulated. The inline piston rests at the configured spring position
 when empty. Switch readings
@@ -1069,6 +1099,7 @@ templates** from them, so a broken template shows up as a test failure.
 |---|---|
 | `boxturtle2_ercf` | three units on one toolhead: two BoxTurtle 1.0 (4 gates each, `VirtualSelector`) and an ERCF 1.1sb (8 gates, `LinearServoSelector`, encoder) — 16 gates, for the scrolling unit rack |
 | `ercf_quattrobox` | multi-unit, mixed selector types with a shared downstream buffer and independent gate encoders |
+| `ercf_mmu_cutter` | a single ERCF 1.1sb (8 gates, encoder) with a servo cutter at the MMU run as the post-unload extension, and no tip forming or toolhead cutter |
 | `ercf_vvd` | **the console default.** A multi-unit profile and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |

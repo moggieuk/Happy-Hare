@@ -3,7 +3,7 @@
 ## Overview
 
 Motion telemetry records what the MMU does (filament moves, selector and servo moves, extruder moves, state changes) so the
-web app (for example the Happy Hare Visualizer) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
+web app (for example the Happy Hare Console) can replay it live or from a saved file. Three parts cooperate: Klipper produces the records, Moonraker
 relays and stores them, and the web app displays them.
 
 ```
@@ -310,7 +310,8 @@ a move.
 
 The final standalone-load G1 is annotated **Final load retraction**, without a
 separate notification. The persisted per-extruder `retracted_length` is part of the replay state, so its
-changes arrive as `state_delta` records. Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
+changes arrive as `state_delta` records, as do changes to the extruder heater's `target_temperature`
+(with the next event; a heater change is not an event of its own). Extrusion totals remain cumulative across releases. Startup snapshots include `filament` context with the
 configured residual, persisted per-extruder fragment length and retained color,
 the selected gate color and persisted `retracted_length`. Missing sensors supply no positional evidence.
 
@@ -353,7 +354,7 @@ of physical filament movement, and a submitted move is not proof of completion.
 Encoder travel is reported separately for that reason. Origin changes are not
 filament travel; before/after drive positions share the stated reference.
 
-A client such as the Visualizer consumes these pairs and derives animation snapshots locally. The
+A client such as the Happy Hare Console consumes these pairs and derives animation snapshots locally. The
 console bridge captures source records without wrapping movement methods or
 observing simulator geometry. The bridge owns a `TelemetryCapture`.
 **Save motion telemetry** now downloads the compact v2 capture as JSONL.
@@ -366,6 +367,8 @@ the next read are omitted. State is read at every event and once more 0.25 s aft
 last one (never in the middle of an open move), so a value assigned just after an event, such as a
 selector's grip, is recorded as a trailing `state_delta` without any polling. A change that
 raises no event of its own is captured by the next read, so it is stamped with that read's time.
+Saving the gate map prompts a read of its own, so an edit made with `MMU_GATE_MAP` (a colour, an
+availability) is recorded when it is made. That prompt is not a record: only the `state_delta` is stored.
 A new session or expired cursor requires a reset.
 
 `extras/mmu/telemetry/capture.py` owns this capture independently of the

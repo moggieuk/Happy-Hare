@@ -28,10 +28,10 @@ class TestTelemetryStream(unittest.TestCase):
         self.stream.close()
         self.hh.close()
 
-    def subscribe(self, key='viewer'):
+    def subscribe(self, key='console'):
         return self.stream.subscribe(key, self.sent.append, lambda: False)
 
-    def ack(self, batch, key='viewer'):
+    def ack(self, batch, key='console'):
         self.stream.ack(key, batch['stream_id'], batch['delivery_id'])
 
     def emit(self, count=1):
@@ -42,7 +42,7 @@ class TestTelemetryStream(unittest.TestCase):
         self.assertIsNone(self.stream.capture)
         batch = self.subscribe()
         self.assertEqual(batch['records'][0]['event'], 'session')
-        self.stream.unsubscribe('viewer')
+        self.stream.unsubscribe('console')
         self.assertIsNone(self.stream.capture)
         self.assertNotEqual(self.subscribe()['stream_id'], batch['stream_id'])
 
@@ -51,7 +51,7 @@ class TestTelemetryStream(unittest.TestCase):
         self.emit(200)
         for i in range(4): self.stream.pump()
         self.assertEqual(self.sent, [])
-        self.stream.ack('viewer', first['stream_id'], -1)
+        self.stream.ack('console', first['stream_id'], -1)
         self.stream.pump()
         self.assertEqual(self.sent, [])
         self.ack(first)

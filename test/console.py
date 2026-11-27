@@ -30,6 +30,7 @@ import collections
 import contextlib
 import logging
 import os
+import random
 import re
 import select
 import shutil
@@ -46,6 +47,7 @@ if __package__ in (None, ''):                       # allow `python test/console
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from test.hh import session as hh_session           # noqa: E402
+from test.hh import bootstrap                       # noqa: E402
 from test.hh import print_job                       # noqa: E402
 from test.hh.webui_bridge import WebUiBridge        # noqa: E402
 
@@ -72,12 +74,14 @@ try:
 except Exception:                                   # pragma: no cover - Windows
     termios = tty = None
 
-# Where a preloaded filament tip is placed: past the entry switch at -50, which is the
+# Where a preloaded filament tip is placed: past the entry switch, which is the
 # precondition Happy Hare requires before a preload can start (test/README.md section 5).
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
 DEFAULT_PROFILE = 'ercf_vvd'
-API_PORT = 7125                                 # Local simulator web API
+PORT_ATTEMPTS = 20                              # Ports tried from the default when it is busy
+SERVE_EXAMPLE = "make console ARGS='--profile boxturtle2_ercf --serve 7131 --serve-host 0.0.0.0'"
+API_PORT = 7125                                 # Local simulator web API and Happy Hare Console
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -464,6 +468,7 @@ def parse_scroll_args(text):
 class Console:
     def __init__(self, args):
         self.args = args
+        self.launch_pace = args.pace
         self.color = not args.plain and sys.stdout.isatty()
         # See truecolor_supported(): guessing truecolor on a terminal without it turns
         # Happy Hare's pink warning into a pink BACKGROUND.
@@ -505,6 +510,7 @@ class Console:
         self.fil = None
         self.bridge = None                          # the web UI's Moonraker API
         self.bridge_error = None                    # why it did not start, if it was asked to
+        self.bridge_notice = None                   # that it moved off a busy default port
         self.cutter_telemetry_unsubscribe = None
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
@@ -553,9 +559,12 @@ class Console:
         effects['__MMU_PURGE_SEGMENT'] = self._run_macro_body
         for name in ('_MMU_CUT_TIP', '_CUT_TIP_MOVE_TO_CUTTER_PIN',
                      '_CUT_TIP_GANTRY_SERVO_DOWN', '_CUT_TIP_GANTRY_SERVO_UP',
-                     '_MMU_FORM_TIP', '_WAIT_FOR_TEMP'):
+                     '_WAIT_FOR_TEMP'):
             effects[name] = self._run_macro_body
-        effects['_CUT_TIP_DO_CUT_MOTION'] = self._run_macro_body
+        for name in ('_CUT_TIP_DO_CUT_MOTION', '_MMU_FORM_TIP'):
+            effects[name] = self._run_macro_body
+        # These bodies are toolhead moves: paced, each takes the time its own speeds give it
+        self.hh.printer.harness_pace_toolhead = True
         self.cutter_telemetry_unsubscribe = self.hh.mmu.movement_telemetry.subscribe(self._on_cutter_telemetry)
 
 
@@ -567,18 +576,17 @@ class Console:
         # Seed calibration INSIDE boot(), before __MMU_BOOTUP runs. Calibrating afterwards
         # (which is what this used to do) left the banner warning "Calibration steps are not
         # complete" about a machine that was calibrated a millisecond later.
-        # gates_loaded_at for the same reason as calibrate: __MMU_BOOTUP prints the gate
-        # table, and _preload_all() runs AFTER boot() returns - so the banner said every gate
-        # was unknown (ERCF) or empty (ViViD, which has per-gate switches) about a machine
-        # that is fully preloaded by the time the prompt appears, and that banner is the last
-        # thing on screen. Only seeded when the preload is actually going to happen.
+        # gates_loaded_at: a printer restarts with its filament where a preload left it and
+        # its gate map persisted, and bootup checks one against the other. Nothing is
+        # preloaded afterwards.
         preloading = not (a.no_preload or a.no_calibrate)
         # home= for the same reason as the other two: bootup renders the selector and filament
         # rows, and homing afterwards left the banner showing 'Selct: XXXX' and '[T?]' about a
         # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
-                     gates_loaded_at=TIP_AT_GATE if preloading else None,
-                     prime=not a.no_prime, seed=a.seed,
+                     gates_loaded_at=bootstrap.AT_PRELOAD_PARK if preloading else None,
+                     gate_status=self._weathered_gate_status if a.seed is not None and not a.no_prime else None,
+                     prime=not a.no_prime, seed=a.seed or 0,
                      pre_bootup=self._home_before_bootup)
         from extras.mmu.mmu_constants import FILAMENT_POS_NAME_MAP
         from extras.mmu.telemetry.capture import display_color as hex6
@@ -607,13 +615,6 @@ class Console:
         # Without this HH auto-heats and reports it through log_error, which lands in the
         # error list and makes a clean session look dirty (bootstrap.py:464).
         self.hh.heat_extruder(a.temp)
-
-        # A PHYSICAL selector needs calibrating and homing before it can select a gate, and an
-        # uncalibrated one refuses with "Selector is not calibrated". No-op on a VirtualSelector
-        # machine, so this costs the older profiles nothing.
-        if preloading:
-            self._preload_all()
-            self._refresh_startup_filament_row()
 
         # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
         # it every call Happy Hare makes to Moonraker goes into the void, so an NFC read ends
@@ -667,16 +668,62 @@ class Console:
         simulator (see test/hh/webui_bridge.py). Happy Hare's pause dialog arrives as
         '// action:prompt_*' output lines, which reach the UI with the rest of the output.
 
-        If the port cannot be opened, warn in the startup banner and keep the console usable.
+        A busy default port moves to the next free one; a port named with --serve is left alone.
+        Either way the startup banner says so and the console stays usable.
         """
-        try:
-            self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=port, host=self.args.serve_host).start()
-        except OSError as exc:
-            self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
+        self.bridge_notice = None
+        for candidate in range(port, port + (1 if explicit else PORT_ATTEMPTS)):
+            try:
+                self.bridge = WebUiBridge(self.hh, self._run_for_bridge, port=candidate, host=self.args.serve_host).start()
+            except OSError as exc:
+                if candidate == port:
+                    self.bridge_error = 'Warning: Web API not started: port %d: %s. Console remains available.' % (port, exc.strerror or exc)
+                continue
+            break
         if self.bridge is None:
             return
+        if self.bridge.port != port and port:
+            self.bridge_notice = ('Warning: port %d is in use, so the web API is on port %d. '
+                                  'Choose one with --serve PORT.' % (port, self.bridge.port))
         self.bridge_error = None
+        self.bridge.restart_profile = self._restart_for_web
+        self.bridge.set_pace = self._pace_for_web
+        self.bridge.profile_name = str(self.args.profile)
         self._install_pace_observer()
+
+    def _pace_for_web(self, realtime):
+        """
+        The web console's live view watches the machine as a printer runs; its telemetry view
+        keeps the pace this console was launched with. A restart from the web keeps the choice.
+        """
+        self.args.pace = 1. if realtime else self.launch_pace
+        return self.hh.set_pacing(self.args.pace, wall=self._wall_pacing())
+
+    def _restart_for_web(self, profile):
+        bridge, previous = self.bridge, self.args.profile
+        no_serve = self.args.no_serve
+        bridge.console_support.close()
+        self.bridge = None  # Keep HTTP and browser connections alive across the reboot.
+        self.args.no_serve = True
+        self.args.profile = profile
+        try:
+            try:
+                self._meta_reset([], show_banner=False)
+            except Exception:
+                self.args.profile = previous
+                self._meta_reset([], show_banner=False)
+                raise
+        finally:
+            self.args.no_serve = no_serve
+            self.bridge = bridge
+            bridge.session = self.hh
+            from test.hh.console_support import ConsoleSupport
+            bridge.console_support = ConsoleSupport(self.hh)
+            bridge.telemetry_stream.reset_capture(self.hh.mmu, bridge.console_support.telemetry_capture)
+            bridge.profile_name = str(self.args.profile)
+            bridge.last_sent.clear()
+            self._install_pace_observer()
+            self.banner()
 
     def web_api_lines(self):
         """What to tell the user about the web API: where it is and how to point a UI at it."""
@@ -685,8 +732,10 @@ class Console:
         port = self.bridge.port
         host = self.bridge.host
         address = '127.0.0.1' if host == '0.0.0.0' else host
-        return ['Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
+        return ([self.bridge_notice] if self.bridge_notice else []) + [
+                'Web API (for Mainsail/Fluidd): host %s  port %d  (http://%s:%d)'
                 % (host, port, address, port),
+                'Happy Hare Console: http://%s:%d/sim/console/' % (address, port),
                 '/web for how to connect; --no-serve turns it off.']
 
     def _meta_web(self, args):
@@ -695,7 +744,7 @@ class Console:
             print('\n'.join(lines) if lines else 'The web API is off. Start the console without --no-serve.')
             return
         port = self.bridge.port
-        for line in lines[:1]:
+        for line in lines[:-2]:
             self.info(line)
         host = '127.0.0.1' if self.bridge.host == '0.0.0.0' else self.bridge.host
         if self.bridge.host == '0.0.0.0':
@@ -706,6 +755,7 @@ class Console:
                   'dialog.\n'
                   'Then /print start, /exhaust 1 and MMU_CHANGE_TOOL TOOL=1 make a pause '
                   'dialog appear.' % (host, port, host, port))
+        self.info('Another port or address, when starting:\n  %s' % SERVE_EXAMPLE)
 
     def _run_for_bridge(self, script):
         """A script sent from the web UI: shown and run as if typed at the prompt. Returns the first failure."""
@@ -744,38 +794,22 @@ class Console:
         model.tip[gate] = min(model.tip[gate], model._nozzle_position(gate)-blade)
         model.sync(gate)
 
-    def _preload_all(self):
-        """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
-        # The preload walks every gate and would otherwise leave the LAST one selected, which
-        # is the one thing about the machine the bootup banner cannot be made to agree with:
-        # it renders before this runs. Preloading from the pre_bootup seam instead is not a
-        # free swap - today the preload runs after _settle_nfc_init() and after bootup sets
-        # the print state to 'initialized', and moving it ahead of bootup changes that
-        # ordering. So restore the selection bootup reported instead, and the banner's
-        # 'Selct:'/'T' row still describes the machine the first MMU_STATUS sees. Read from
-        # the machine rather than hardcoding gate 0, so a persisted selection is honoured too.
-        selected = self.hh.mmu.gate_selected
-        for gate in range(self.hh.mmu.num_gates):
-            self.hh.place_filament(gate, position=TIP_AT_GATE)
-            self._dispatch('MMU_PRELOAD GATE=%d' % gate)
-            # Settle between gates. Without it the preload does not finish and the gate is
-            # left EMPTY, which then fails every load with "Gate N is empty".
-            self.hh.reactor.advance(0.)
-        if selected >= 0 and self.hh.mmu.gate_selected != selected:
-            self._dispatch('MMU_SELECT GATE=%d' % selected)
-            self.hh.reactor.advance(0.)
-        self._clear_sink()  # setup noise is not console history
-
-    def _refresh_startup_filament_row(self):
-        """Make the cached boot banner describe the post-preload simulator state."""
-        current, _plain = self.hh.mmu.logger._color_message(
-            self.hh.mmu.get_filament_position_string())
-        refreshed = []
-        for message in self.startup_output:
-            lines = message.split('\n')
-            lines = [current if line.startswith('[T') else line for line in lines]
-            refreshed.append('\n'.join(lines))
-        self.startup_output = refreshed
+    def _weathered_gate_status(self):
+        """
+        The gate map a used machine is found with, persisted before bootup so that Happy Hare
+        corrects it from the sensors as it would on a printer: a spool that has run out has no
+        filament at its gate and reads EMPTY, and one or two gates with filament read UNKNOWN.
+        Gate 0, which bootup selects, is left alone.
+        """
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, GATE_EMPTY, GATE_UNKNOWN
+        mmu = self.hh.mmu
+        rng = random.Random(self.args.seed + 2)
+        status = [GATE_EMPTY if mmu.gate_remaining_weight[gate] == 0 else GATE_AVAILABLE
+                  for gate in range(mmu.num_gates)]
+        stocked = [gate for gate in range(1, mmu.num_gates) if status[gate] == GATE_AVAILABLE]
+        for gate in rng.sample(stocked, min(len(stocked), rng.randint(1, 2))):
+            status[gate] = GATE_UNKNOWN
+        return status
 
     def close(self):
         if self.cutter_telemetry_unsubscribe is not None:
@@ -982,6 +1016,7 @@ class Console:
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
             if self.bridge is not None:
                 self.bridge.host_output('!! reactor: %s' % exc)
+        self._idle_clock(active=True)
         self._settle_moonraker()
         self._drain(mark)                           # anything streaming did not already print
         self.streaming = False
@@ -1240,11 +1275,13 @@ class Console:
     }
 
     def _landmarks(self):
-        """[(position, label)] in path order, one entry per distinct position."""
+        """[(landmark, label)] in path order, one entry per distinct position."""
         by_pos = {}
         for name, pos in self.fil.layout.items():
-            by_pos.setdefault(pos, []).append(self._LANDMARK_LABEL.get(name, name))
-        return [(pos, '/'.join(sorted(by_pos[pos]))) for pos in sorted(by_pos)]
+            by_pos.setdefault(pos, []).append(name)
+        return [(by_pos[pos][0],
+                 '/'.join(sorted(self._LANDMARK_LABEL.get(name, name) for name in by_pos[pos])))
+                for pos in sorted(by_pos)]
 
     def _hdr_filament(self, st):
         """Per-gate tip position on the modelled path - what a real printer cannot show."""
@@ -1271,8 +1308,8 @@ class Console:
                                                  paint('(empty)', '90', self.color)))
                 continue
             cells = []
-            for (pos, _), w in zip(marks, widths):
-                covered = tail <= pos <= tip        # filament occupies [tail, tip]
+            for (name, _), w in zip(marks, widths):
+                covered = tail <= self.fil.landmark(name, gate) <= tip  # filament occupies [tail, tip]
                 cells.append(paint('##'.center(w), '1;32', self.color) if covered
                              else '..'.center(w))
             out.append('  %sgate %-3d %s  %+8.1f' % (flag, gate, ' '.join(cells), tip))
@@ -1321,7 +1358,16 @@ class Console:
             if gate < len(spools) and spools[gate] not in (None, -1):
                 bits.append('#%s' % spools[gate])
             cells.append('%d:%s' % (gate, '/'.join(bits)))
-        return ['  ' + '  '.join(cells)]
+        # Wrapped to the terminal: a row wider than the screen spills onto the next header row
+        import shutil
+        width = max(40, shutil.get_terminal_size((100, 24)).columns)
+        lines, cur = [], ''
+        for cell in cells:
+            if cur and len(cur) + 2 + len(cell) > width:
+                lines.append(cur)
+                cur = ''
+            cur = (cur + '  ' if cur else '  ') + cell
+        return lines + [cur]
 
     # A lit LED is a SOLID BLOCK, not '##'. The old glyph was painted in the LED's own
     # colour, which made a white or grey LED - mmu_breathing_white_fast (0.2,0.2,0.2) on
@@ -1482,6 +1528,22 @@ class Console:
         if self.scrollback:
             LogPager(self).paint_tail()
 
+    def resize_redraw(self):
+        """
+        Repaint everything after the terminal changed size, and say whether that was possible.
+
+        A terminal moves or rewraps what it is already showing when its size changes, so the
+        old status band ends up somewhere in the log area. Repainting only the band leaves it there.
+        """
+        if not sys.stdout.isatty():
+            return False
+        self.redraw()
+        if self._at_prompt:
+            out = raw_stdout()
+            out.write(self.prompt() + self._line_buffer())
+            out.flush()
+        return True
+
 
 
     #########################
@@ -1592,9 +1654,33 @@ class Console:
             self._settle_moonraker()
             left -= step
 
+    def _idle_clock(self, active=False):
+        """
+        Klipper's idle timeout, which the fake leaves to its caller: a command leaves the
+        printer Ready with the timeout counting from then (moves take no time when unpaced, so
+        every command counts), and the timeout expiring turns the extruder heater off and
+        leaves it Idle. A job drives the state itself while it plays.
+        """
+        idle = self.hh.printer.lookup_object('idle_timeout', None)
+        if idle is None or idle.state == 'Printing':
+            return
+        now = self.hh.reactor.monotonic()
+        if active:
+            toolhead = self.hh.printer.lookup_object('toolhead')
+            toolhead.last_move_time = toolhead.get_last_move_time()
+            if idle.state == 'Ready':
+                idle.timeout_timer.waketime = now + idle.idle_timeout
+            else:
+                idle.set_state('Ready')
+        elif idle.state == 'Ready' and now >= idle.timeout_timer.waketime:
+            self._dispatch('M104 S0')
+            idle.set_state('Idle')
+            self.hh.reactor.advance(0.)
+
     def _meta_advance(self, args):
         mark = len(self.sink)
         self.advance(float(args[0]) if args else 1.0)
+        self._idle_clock()
         self._drain(mark)
 
     def _meta_clear(self, args):
@@ -1837,7 +1923,7 @@ class Console:
         self._drain(mark)
 
     # Buffers and encoders are simulator objects whose settings are not MMU_TEST_CONFIG parameters,
-    # so they are edited here. Each edit emits one event so a viewer refresh shows it at once.
+    # so they are edited here. Each edit emits one event so a Happy Hare Console refresh shows it at once.
 
     def _object_arguments(self, kind, args, settings):
         """Resolve `[NAME] KEY=value ...` to (object, units sharing it, {key: text})."""
@@ -2135,11 +2221,15 @@ class Console:
                 if self.JOB_MOTION.match(word):
                     dwells = len(toolhead.dwells)
                     before = gcode_move.last_position[:4]
+                    # A job's own moves are timed here, in batches, not one by one by the toolhead
+                    self.hh.printer.harness_pace_toolhead = False
                     try:
                         self.hh.gcode.run_script(line)
                     except Exception as exc:        # noqa: BLE001
                         print(paint('!! %s' % exc, '1;31', self.color))
                         self.failures += 1
+                    finally:
+                        self.hh.printer.harness_pace_toolhead = True
                     after = gcode_move.last_position[:4]
                     de = after[3] - before[3]
                     job.extruded += de
@@ -2211,6 +2301,7 @@ class Console:
     def _job_hold(self, why):
         job = self.job
         self.hh.printer.lookup_object('print_stats').set_state('paused')
+        self.hh.printer.lookup_object('idle_timeout').set_state('Ready')
         self.info('Print job %s held at line %d (%s): %s\n'
                   'Fix it, RESUME (or MMU_UNLOCK then RESUME), then /print resume - '
                   'or /print cancel' % (job.name, job.line_no, why,
@@ -2323,6 +2414,7 @@ class Console:
             return                                  # belt and braces: mid-dispatch anyway
         self._ticking = True
         try:
+            idle_until = time.monotonic()
             self._service_bridge()
             if not self.live:
                 return                              # a frozen clock only serves the web UI
@@ -2330,13 +2422,15 @@ class Console:
             # 'is None', not 'or': _last_tick is a float and 0.0 is a legitimate reading,
             # which 'or' would silently treat as never-ticked and skip the advance.
             last = now if self._last_tick is None else self._last_tick
-            dt = min(now - last, LIVE_MAX_CATCHUP)
+            # A command run for the web UI has already spent its own time on the clock
+            dt = min(idle_until - last, LIVE_MAX_CATCHUP)
             self._last_tick = now
             if dt <= 0:
                 return
             mark = len(self.sink)
             try:
                 self.advance(dt)
+                self._idle_clock()
             except Exception as exc:                # noqa: BLE001
                 # Stop rather than reprint the same failure on every tick.
                 self.live = False
@@ -2345,8 +2439,8 @@ class Console:
                 return
             if len(self.sink) > mark:
                 self._reprint(lambda: self._drain(mark))
-            if self.pinned is not None:
-                self.pinned.repaint()               # the clock and t=+Ns moved
+            if self.pinned is not None and self.pinned.repaint():   # the clock and t=+Ns moved
+                self._reprint(lambda: None)         # the header changed height and took the cursor with it
         finally:
             self._ticking = False
 
@@ -2772,6 +2866,8 @@ class Console:
             self.info(line)
         self.info('/help for meta-commands, MMU_HELP for Happy Hare commands, '
                   'Ctrl-D to quit.')
+        if self.args.seed and not self.args.no_prime:
+            self.info('Spools were primed with --seed %d; pass it again to repeat them.' % self.args.seed)
         if self.scrollback is not None and sys.stdout.isatty():
             self.info('%s scrolls back through the log.'
                       % ('Shift-Up, PgUp or /s' if self.scroll_keys else '/s (or /scroll)'))
@@ -2927,6 +3023,8 @@ class PinnedHeader:
         self.height = 0                             # rows actually reserved
         self.wanted = 0                             # rows the header asked for
         self.active = False
+        self.painting = False                       # a resize is being painted
+        self.resized = False                        # the terminal changed size since the last paint
 
     # -- terminal plumbing ----------------------------------------------------
     @staticmethod
@@ -2934,7 +3032,7 @@ class PinnedHeader:
         import shutil
         return max(8, shutil.get_terminal_size((100, 24)).lines)
 
-    def _set_region(self, height):
+    def _set_region(self, height, home=True):
         # raw_stdout() throughout, not sys.stdout: cursor control is not log content and must
         # not reach the scrollback buffer. With no tee installed the two are the same thing.
         out = raw_stdout()
@@ -2944,8 +3042,10 @@ class PinnedHeader:
         out.write('\0337')                          # save cursor
         out.write('\033[%d;%dr' % (height + 1, rows))
         out.write('\0338')
-        # If the cursor is still up in the reserved band, get it into the scroll region.
-        out.write('\033[%d;1H' % (height + 1))
+        # On a cleared screen the log starts at the top of the scroll region. Once there is a log
+        # the cursor belongs at its foot, where the prompt is: from the top, output would be
+        # written over the rows already on screen instead of scrolling them.
+        out.write('\033[%d;1H' % (height + 1 if home else rows))
         out.flush()
         self.height = height
 
@@ -2966,8 +3066,25 @@ class PinnedHeader:
         return self
 
     def _on_resize(self, *_args):
-        if self.active:
-            self.repaint(force=True)
+        # SIGWINCH arrives in bursts while a window is dragged, and a handler can interrupt
+        # the previous one (or any print) in the middle of a write to stdout, which Python
+        # refuses to re-enter. So only note the resize here if a paint is already under way,
+        # and leave one that could not be painted for the next repaint.
+        if not self.active:
+            return
+        self.resized = True
+        if self.painting:
+            return
+        self.painting = True
+        try:
+            while self.resized:
+                try:
+                    self.repaint()
+                except RuntimeError:
+                    self.resized = True
+                    break
+        finally:
+            self.painting = False
 
     def restore(self):
         if not self.active:
@@ -2980,6 +3097,11 @@ class PinnedHeader:
 
     # -- painting -------------------------------------------------------------
     def repaint(self, force=False):
+        if self.resized:
+            self.resized = False
+            if self.console.resize_redraw():
+                return
+            force = True
         block = self.console.header_block()
         if not block:
             return
@@ -2987,8 +3109,9 @@ class PinnedHeader:
         # band is capped, so height stays below len(block) permanently and comparing against
         # it would re-run _set_region on every repaint - which moves the cursor, twice a
         # second under a live clock, right out from under the prompt.
-        if force or len(block) != self.wanted:
-            self._set_region(len(block))
+        moved = force or len(block) != self.wanted
+        if moved:
+            self._set_region(len(block), home=force)
         if len(block) > self.height:
             # The band is capped at rows-4 so there is always room to type. Painting the
             # whole block regardless would write through the bottom of the band and into the
@@ -3005,6 +3128,7 @@ class PinnedHeader:
             out.write(text + RESET)
         out.write('\0338')                          # restore cursor
         out.flush()
+        return moved
 
 
 class LogPager:
@@ -3308,7 +3432,10 @@ def select_startup_profile(args):
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog='make console',
-        description='Interactive MMU console on the Happy Hare test harness.')
+        description='Interactive MMU console on the Happy Hare test harness.',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='Flags go through ARGS. To serve the web API on another port, reachable from\n'
+               'other computers:\n  %s' % SERVE_EXAMPLE)
     p.add_argument('--profile', default=None,
                    help='harness profile name. When omitted at a terminal, choose from a '
                         'startup list; otherwise ercf_vvd is used. ercf_vvd is a real 2-unit machine '
@@ -3324,16 +3451,17 @@ def parse_args(argv=None):
     p.add_argument('--no-prime', action='store_true',
                    help='leave the gate map blank instead of giving every gate a vendor, '
                         'material, colour and temperature')
-    p.add_argument('--seed', type=int, default=0,
-                   help='seed for the primed gate map, so a session is reproducible '
-                        '(default %(default)s)')
+    p.add_argument('--seed', type=int, default=None,
+                   help='seed for the primed gate map, to repeat a session. An interactive '
+                        'session picks a new one each start and prints it; a --script run uses 0')
     p.add_argument('--no-moonraker', action='store_true',
                    help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
                         'unanswered - which is what a printer with Moonraker down looks like')
     p.add_argument('--serve', nargs='?', const=API_PORT, default=None, type=int, metavar='PORT',
-                   help='serve the Moonraker-compatible web API on this port (default %d). It is '
-                        'already on by default at a terminal, so this is for choosing the port or '
-                        'turning it on when not at one' % API_PORT)
+                   help='serve the Moonraker-compatible web API on this port (default %d, or the '
+                        'next free port when that is in use; a port named here is never changed). '
+                        'It is already on by default at a terminal, so this is for choosing the '
+                        'port or turning it on when not at one' % API_PORT)
     p.add_argument('--serve-host', default='127.0.0.1', metavar='ADDRESS',
                    help='web API listening address (default %(default)s); use a LAN IPv4 address '
                         'or 0.0.0.0 for remote access. The simulator API has no authentication')
@@ -3414,8 +3542,16 @@ def parse_args(argv=None):
     return args
 
 
+def startup_seed(args):
+    """A new gate map each interactive start; an explicit seed or a --script run stays repeatable."""
+    if args.seed is None and not args.script:
+        return random.SystemRandom().randrange(1, 10000)
+    return args.seed
+
+
 def main(argv=None):
     args = select_startup_profile(parse_args(argv))
+    args.seed = startup_seed(args)
     console = Console(args)
     if not args.script:
         # boot() builds a whole fake printer and preloads every gate, which is fifteen to

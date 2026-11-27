@@ -534,6 +534,45 @@ class TestNfcCommandSurface(RoundTripTestCase):
         self.assertIn('disabled', self.rt.errors[-1].lower())
 
 
+class TestSpoolmanTagMigrateCommand(RoundTripTestCase):
+    """MMU_SPOOLMAN_TAG MIGRATE= end to end against Spoolman 0.27. Startup migrates;
+    each test then starts from the legacy state via MIGRATE=extra."""
+
+    SPOOLS = (dict(uid=TAG_A, material='PLA'),
+              dict(uid=TAG_B, material='ABS', vendor='Polymaker'))
+
+    def setUp(self):
+        self.rt = RoundTrip(profile=self.PROFILE, spools=list(self.SPOOLS),
+                            moonraker_kwargs={'spoolman_version': '0.27.0'})
+        self.rt.boot()
+        self.assertEqual(self.rt.errors, [], 'bootup was not clean')
+        self.rt.advance(self.WARMUP)
+        self.migrated_at_startup = dict(self.rt.db.tag_links)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=extra')
+
+    def test_startup_migrates(self):
+        self.assertEqual(self.migrated_at_startup, {TAG_A: ('spool', 1), TAG_B: ('spool', 2)})
+        self.assertEqual(self.rt.db.tag_links, {}, 'precondition for the other tests')
+
+    def test_migrate_native_then_extra(self):
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native')
+        self.assertEqual(self.rt.db.spool_native_uids(1), [TAG_A])
+        self.assertEqual(self.rt.db.spool_native_uids(2), [TAG_B])
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=extra')
+        self.assertEqual(self.rt.db.tag_links, {})
+        self.assertEqual(self.rt.db.spool_uid(1), TAG_A, 'still in the extra field')
+        self.assertEqual(self.rt.errors, [])
+
+    def test_dry_run_changes_nothing(self):
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=native DRYRUN=1')
+        self.assertEqual(self.rt.db.tag_links, {})
+
+    def test_bad_direction_errors(self):
+        with self.assertRaisesRegex(Exception, "MIGRATE must be"):
+            self.rt.run_gcode('MMU_SPOOLMAN_TAG MIGRATE=sideways')
+        self.assertEqual(self.rt.db.tag_links, {}, 'nothing migrated')
+
+
 class TestSpoolmanRfidCommand(RoundTripTestCase):
     """
     'MMU_SPOOLMAN_TAG ... RFID=' end to end: Klipper command -> _spoolman_set_spool_uid ->

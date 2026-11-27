@@ -46,7 +46,7 @@ class MmuSendTelemetryCommand(BaseCommand):
 class MmuTelemetryCommand(BaseCommand):
     CMD = 'MMU_TELEMETRY'
 
-    HELP_BRIEF = 'Record motion telemetry to the Moonraker log'
+    HELP_BRIEF = 'Record motion telemetry to mmu-telemetry.jsonl for the Happy Hare Console'
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + f"{CMD} [MODE=[off|on|toolchange]]\n"

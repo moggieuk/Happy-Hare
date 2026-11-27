@@ -25,10 +25,16 @@ import collections
 import hashlib
 import http.server
 import json
+import os
 import queue
+import pathlib
 import select
+import shutil
 import socket
+import tempfile
+import re
 
+from test.hh.console_support import ConsoleSupport
 import struct
 import sys
 import threading
@@ -38,7 +44,7 @@ import urllib.parse
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 RPC_METHOD_NOT_FOUND = -32601
 RPC_SERVER_ERROR = -32000
-STATUS_PERIOD = 0.5                 # seconds between notify_status_update pushes
+STATUS_PERIOD = 0.25                # seconds between notify_status_update pushes, as Klipper's subscriptions
 REQUEST_TIMEOUT = 20.0              # an HTTP caller waits this long for the console thread
 GCODE_STORE_LINES = 1000
 MAX_MESSAGE_BYTES = 8_000_000      # one WebSocket message; a configuration upload is the largest legitimate one
@@ -77,6 +83,20 @@ def simulator_stream(mmu, capture):
                 client.update(after=None, inflight=None)
 
     return SimulatorStream(mmu, capture)
+
+
+CONSOLE_REPO = 'https://github.com/moggieuk/Happy-Hare-Console.git'
+CONSOLE_MISSING = ('The Happy Hare Console was not found at %%s\n\n'
+                   'Clone it beside this checkout:\n\n    git clone %s\n\n'
+                   'or set HH_CONSOLE_DIR to the console folder of a checkout elsewhere.\n' % CONSOLE_REPO)
+
+
+def console_dir():
+    """The Console's web folder: HH_CONSOLE_DIR, else a Happy-Hare-Console checkout beside this one."""
+    named = os.environ.get('HH_CONSOLE_DIR')
+    if named:
+        return pathlib.Path(named).expanduser()
+    return pathlib.Path(__file__).resolve().parents[3] / 'Happy-Hare-Console' / 'console'
 
 
 class RpcError(Exception):
@@ -207,9 +227,17 @@ class WebUiBridge:
         self._next_status = 0.0
         self._next_telemetry = 0.0
         self._server = None
-        from extras.mmu.telemetry.capture import TelemetryCapture
-        self.telemetry_capture = TelemetryCapture(session.mmu, limit=6000)
-        self.telemetry_stream = simulator_stream(session.mmu, self.telemetry_capture)
+        self.console_support = ConsoleSupport(session)
+        self.telemetry_stream = simulator_stream(session.mmu, self.console_support.telemetry_capture)
+        self.restart_profile = None
+        self.set_pace = None
+        self.profile_name = ""
+        self.uploads = tempfile.TemporaryDirectory(prefix="hh-console-")
+        self._upload_root = None                  # The configuration directory the running session was booted from, if uploaded
+
+    @property
+    def telemetry_capture(self):
+        return self.console_support.telemetry_capture
 
     # -- lifecycle -------------------------------------------------------------
     def start(self):
@@ -258,7 +286,8 @@ class WebUiBridge:
         try:
             self._server = _Server((self.host, self.port), Handler)
         except OSError:
-            self.telemetry_capture.close()
+            self.console_support.close()
+            self.uploads.cleanup()
             raise
         self.port = self._server.server_address[1]
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
@@ -266,7 +295,8 @@ class WebUiBridge:
 
     def close(self):
         self.telemetry_stream.close()
-        self.telemetry_capture.close()
+        self.console_support.close()
+        self.uploads.cleanup()
         for conn in list(self.clients):
             conn.close()
         if self._server is not None:
@@ -337,6 +367,24 @@ class WebUiBridge:
                 sent = None
             if isinstance(sent, dict):
                 params.update(sent)
+        # The Happy Hare Console (a repository of its own): index plus its flat modules and stylesheet.
+        # The page uses relative URLs, so the directory form of the address is required.
+        if parsed.path == '/sim/console':
+            handler.send_response(301)
+            handler.send_header('Location', '/sim/console/')
+            handler.send_header('Content-Length', '0')
+            handler.end_headers()
+            return
+        web_dir = console_dir()
+        name = 'index.html' if parsed.path == '/sim/console/' else parsed.path.removeprefix('/sim/console/')
+        if parsed.path.startswith('/sim/console') and re.fullmatch(r'index\.html|[\w-]+\.(js|css)', name) \
+                and (web_dir / name).is_file():
+            self._reply(handler, 200, (web_dir / name).read_bytes(),
+                        {'js': 'text/javascript', 'css': 'text/css'}.get(name.rsplit('.', 1)[-1], 'text/html'))
+            return
+        if parsed.path == '/sim/console/':
+            self._reply(handler, 404, (CONSOLE_MISSING % web_dir).encode(), 'text/plain; charset=utf-8')
+            return
         method = parsed.path.strip('/').replace('/', '.')
         if method == 'server.database.item':
             method = 'server.database.get_item' if body is None else 'server.database.post_item'
@@ -368,6 +416,11 @@ class WebUiBridge:
             self._next_telemetry = now + .25
             self.telemetry_stream.pump()
 
+    def _pump_status(self, now):
+        if self.clients and now >= self._next_status:
+            self._next_status = now + STATUS_PERIOD
+            self.push_status()
+
     def notify(self, method, params):
         text = json.dumps({'jsonrpc': '2.0', 'method': method, 'params': params}, default=str)
         for conn in list(self.clients):
@@ -383,7 +436,7 @@ class WebUiBridge:
         return bool(self._deferred_requests or self.inbox.qsize())
 
     def service_during_move(self):
-        """Deliver completed moves without executing another printer command."""
+        """Deliver completed moves and status changes without executing another printer command."""
         for _ in range(self.inbox.qsize()):
             try:
                 item = self.inbox.get_nowait()
@@ -399,6 +452,7 @@ class WebUiBridge:
                 self._deferred_requests.append(item)
         now = time.monotonic()
         self._pump_telemetry(now)
+        self._pump_status(now)                    # as Moonraker does while a command runs
 
     def service(self):
         """Run every queued request. Call from the thread that owns the session."""
@@ -411,9 +465,7 @@ class WebUiBridge:
             self._handle(conn, text, waiter)
         now = time.monotonic()
         self._pump_telemetry(now)
-        if self.clients and now >= self._next_status:
-            self._next_status = now + STATUS_PERIOD
-            self.push_status()
+        self._pump_status(now)
 
     def _handle(self, conn, text, waiter):
         try:
@@ -439,8 +491,6 @@ class WebUiBridge:
             done.set()
         elif conn is not None:
             conn.send_text(json.dumps(reply, default=str))
-        if method == 'printer.gcode.script':
-            self.push_status()                    # show what the script changed immediately
 
     # -- status ----------------------------------------------------------------
     def _objects(self):
@@ -648,3 +698,102 @@ class WebUiBridge:
 
     def rpc_server_mmu_telemetry_unsubscribe(self, conn, params):
         return self.telemetry_stream.unsubscribe(conn)
+
+    def rpc_sim_console_setup(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        units = self.session.mmu.mmu_machine.units
+        index = int(params.get('unit', 0))
+        if not 0 <= index < len(units):
+            raise RpcError('Unknown MMU unit')
+        return dict(connection_kind='simulator', profile=self.profile_name,
+                    profiles=[dict(name=p.name, description=p.description) for p in CONSOLE_PROFILES],
+                    units=[u.name for u in units], parameters=self.console_support.parameters(index),
+                    macro_parameters=self.console_support.macro_parameters())
+
+    def rpc_sim_console_sensor(self, conn, params):
+        name = params.get('name')
+        sensors = self.session.mmu.sensor_manager.get_sensor_states(all_sensors=True)
+        if name not in sensors or not isinstance(params.get('enabled'), bool):
+            raise RpcError('Choose an available sensor and enabled state')
+        self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
+        return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
+
+    def rpc_sim_console_pace(self, conn, params):
+        if self.set_pace is None:
+            raise RpcError('Pacing requires the interactive console')
+        return {'pace': self.set_pace(bool(params.get('realtime')))}
+
+    def rpc_sim_console_restart(self, conn, params):
+        from test.hh.profiles import CONSOLE_PROFILES
+        if self.restart_profile is None:
+            raise RpcError('Profile restart requires the interactive console')
+        profile, root = params.get('profile'), None
+        try:
+            label = None
+            if 'files' in params:
+                root = self._store_upload(params['files'])
+                profile = str(self._upload_config_dir(root))
+                from test.hh.cfg import install_version_problem
+                problem = install_version_problem(p.read_text() for p in pathlib.Path(profile).glob('mmu/base/*.cfg'))
+                if problem:
+                    raise RpcError(problem)
+                label = pathlib.PurePosixPath(params['files'][0]['name']).parts[0]
+                label = 'uploaded config' if label.endswith('.cfg') else label
+            elif profile not in {p.name for p in CONSOLE_PROFILES}:
+                raise RpcError('Choose an available simulator profile')
+            self.restart_profile(profile)
+        except BaseException:
+            if root is not None:
+                shutil.rmtree(root, ignore_errors=True)
+            raise
+        # The previous upload is only needed until its replacement has booted
+        if self._upload_root is not None:
+            shutil.rmtree(self._upload_root, ignore_errors=True)
+        self._upload_root = root
+        if label:
+            self.profile_name = label
+        self.notify('notify_klippy_ready', [])  # As after a Klipper restart: live views resubscribe to the new session
+        return {'profile': self.profile_name}
+
+    def _store_upload(self, files):
+        """Write an uploaded configuration directory to temporary storage and return its root."""
+        if not isinstance(files, list) or not files or len(files) > 500:
+            raise RpcError('Supply a configuration directory with at most 500 files')
+        root = pathlib.Path(tempfile.mkdtemp(dir=self.uploads.name))
+        total = 0
+        for item in files:
+            if not isinstance(item, dict) or not isinstance(item.get('name'), str) or not isinstance(item.get('text'), str):
+                raise RpcError('Each uploaded file needs a name and text')
+            name, text = item['name'], item['text']
+            path = pathlib.PurePosixPath(name)
+            if path.is_absolute() or '..' in path.parts or not name.endswith('.cfg'):
+                raise RpcError('Supply relative .cfg filenames')
+            total += len(text.encode())
+            if total > 5_000_000:
+                raise RpcError('Configuration upload exceeds 5 MB')
+            # Only printer.cfg's [include mmu/...] lines and the files under mmu/ are ever read
+            for inc in re.findall(r'(?im)^\s*\[include\s+([^]]+)\]', text):
+                inc = pathlib.PurePosixPath(inc.strip())
+                if (inc.parts[:1] == ('mmu',) or 'mmu' in path.parts) and (inc.is_absolute() or '..' in inc.parts):
+                    raise RpcError('Includes must stay within the uploaded configuration')
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text)
+        return root
+
+    @staticmethod
+    def _upload_config_dir(root):
+        """
+        The folder to boot from: the one holding the outermost printer.cfg, else the one holding mmu/,
+        else the one holding an mmu folder kept under another name (mmu.old), which becomes mmu/.
+        """
+        for found in (root.rglob('printer.cfg'), (p.parents[1] for p in root.rglob('mmu/base/mmu.cfg')),
+                      (p.parents[1] for p in root.rglob('base/mmu.cfg') if p.parents[1] != root)):
+            found = sorted(found, key=lambda p: len(p.parts))
+            if len(found) > 1 and len(found[0].parts) == len(found[1].parts):
+                break
+            if found and found[0].name not in ('printer.cfg', 'mmu') and not (found[0].parent / 'mmu').exists():
+                found[0] = found[0].rename(found[0].parent / 'mmu')
+            if found and (found[0].parent / 'mmu' / 'base' / 'mmu.cfg').is_file():
+                return found[0].parent
+        raise RpcError('Choose the folder holding printer.cfg, or its mmu folder')

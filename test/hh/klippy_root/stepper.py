@@ -141,14 +141,12 @@ class MCU_stepper:
         """
         Register `distance` mm of REAL travel. The counterpart to set_position.
 
-        The fake has no step generation, so nothing else advances the mcu position. The
-        harness calls this for homing, manual MMU moves, and toolhead extrusion.
-
-        Adjusts the OFFSET rather than _commanded_pos on purpose: the commanded position is
-        owned by set_position and mirrors MmuStepper.commanded_pos, so moving it here would
-        make everything that reads get_commanded_position() disagree with Happy Hare.
+        The fake has no step generation, so nothing else advances the stepper. The harness
+        calls this for homing, manual MMU moves, and toolhead extrusion. As in Klipper, travel
+        moves the commanded position and the mcu step count together, so a position read
+        back from the step count partway through a paced move is where the stepper has got to.
         """
-        self._mcu_position_offset += distance
+        self._commanded_pos += distance
 
     def get_commanded_position(self):
         return self._commanded_pos

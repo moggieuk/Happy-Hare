@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Replay capture must remain independent of simulator geometry and the viewer.
+# Goal: Replay capture must remain independent of simulator geometry and the Happy Hare Console.
 #
 # (\_/)
 # ( *,*)
@@ -98,16 +98,17 @@ class TestTelemetryCapture(unittest.TestCase):
                 self.assertEqual(facts['printer']['mmu_machine']['units'][unit.name]
                                  ['has_per_gate_heaters'], expected)
 
-    def test_heater_changes_are_not_movement_telemetry(self):
+    def test_extruder_target_temperature_is_captured(self):
         heater = self.hh.mmu.printer.lookup_object('extruder').get_heater()
         capture = self.capture()
         baseline = capture.read()['records'][0]['state']
-        self.assertNotIn('target_temperature', baseline['printer']['mmu_machine']['units']['unit0']['extruder'])
+        self.assertEqual(baseline['printer']['mmu_machine']['units']['unit0']['extruder']['target_temperature'], 0)
         heater.set_temp(220)
         self.emit()
         changes = [change for record in capture.read()['records'] if record['event'] == 'state_delta'
                    for change in record['changes']]
-        self.assertFalse(any('target_temperature' in change['path'] for change in changes))
+        self.assertIn(dict(path=['printer', 'mmu_machine', 'units', 'unit0', 'extruder', 'target_temperature'],
+                           value=220), changes)
 
     def test_grip_state_and_always_gripped_are_captured(self):
         selector = self.hh.mmu.selector()
@@ -158,6 +159,22 @@ class TestTelemetryCapture(unittest.TestCase):
         self.assertIn('log_level', state['parameters'])
         self.assertIn('gate_homing_endstop', unit['parameters'])
         self.assertIn('toolhead_residual_filament', unit['toolhead']['parameters'])
+
+    def test_a_gate_map_edit_is_recorded_at_once_as_a_delta_with_no_event_of_its_own(self):
+        capture = self.capture()
+        before = len(capture.read()['records'])
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 COLOR=ff0000')
+        records = capture.read()['records'][before:]
+        self.assertEqual([r['event'] for r in records], ['state_delta'])
+        self.assertIn(['printer', 'mmu', 'gate_color'], [c['path'][:3] for c in records[0]['changes']])
+
+    def test_a_tool_map_edit_is_recorded_at_once(self):
+        capture = self.capture()
+        before = len(capture.read()['records'])
+        self.hh.run_gcode('MMU_TTG_MAP TOOL=0 GATE=2')
+        records = capture.read()['records'][before:]
+        self.assertEqual({r['event'] for r in records}, {'state_delta'})
+        self.assertIn(['printer', 'mmu', 'ttg_map'], [c['path'][:3] for r in records for c in r['changes']])
 
     def test_parameter_edit_is_one_delta_and_does_not_reread_parameter_sets(self):
         capture = self.capture()

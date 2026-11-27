@@ -68,7 +68,7 @@ class TelemetryAPI:
         request.send({})
 
     def set_record_mode(self, mode):
-        """Moonraker persists records; ask it to subscribe if no viewer already has."""
+        """Moonraker persists records; ask it to subscribe if no client already has."""
         try:
             wake = self.stream.set_record_mode(mode)
         except Exception as exc:

@@ -155,6 +155,7 @@ class FakeKlippyApis:
         self.queue = []             # undrained commands
         self.sink = None
         self.pause_calls = 0
+        self.klippy_state = 'ready'  # webhooks.state: 'startup' until Klipper accepts gcode
         self.extra_status = {}
         self.config_sections = {}   # Klipper's configfile 'config': {section: {option: raw string}}
         # The second channel back into Klipper, for the TD-1 bridge alone: an endpoint
@@ -169,13 +170,16 @@ class FakeKlippyApis:
         return objects
 
     async def query_objects(self, objects, default=None):
+        result = {}
         if 'configfile' in objects:
-            return {'configfile': {'config': dict(self.config_sections)}}
+            result['configfile'] = {'config': dict(self.config_sections)}
+        if 'webhooks' in objects:
+            result['webhooks'] = {'state': self.klippy_state}
         if 'mmu' in objects and self.mmu_present:
             status = {'enabled': self.mmu_enabled, 'num_gates': self.num_gates}
             status.update(self.extra_status)
-            return {'mmu': status}
-        return {}
+            result['mmu'] = status
+        return result
 
     async def subscribe_objects(self, objects, callback=None, default=None):
         return await self.query_objects(objects)
@@ -491,6 +495,8 @@ class MoonrakerHarness:
             self.db.add_spool(**spec)
         self.server = FakeServer(self.db, num_gates=num_gates, hostname=hostname,
                                  spoolmandb=spoolmandb, mmu_enabled=mmu_enabled)
+        # Live updates run an endless websocket task; tests that want it turn it on
+        options = dict({'spoolman_live_updates': False}, **(options or {}))
         self.config = FakeConfigHelper(self.server, options=options)
         self.loop = asyncio.new_event_loop()
         self.mmu_server = self.mmu_server_mod.MmuServer(self.config)

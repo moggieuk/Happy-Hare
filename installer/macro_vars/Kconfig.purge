@@ -13,4 +13,12 @@ menu "Purge                    (_MMU_PURGE)"
       Set as fast as possible without the extruder skipping steps.
       Extruder current can also be increased in mmu_parameters.cfg.
 
+  config VAR_PURGE_EXTRA_PURGE_LENGTH
+    float "Extra purge length"
+    default 0
+    range 0 1000
+    help
+      Fixed length (mm) of filament purged on top of the purge volume
+      Happy Hare calculates for the toolchange. 0 to disable.
+
 endmenu

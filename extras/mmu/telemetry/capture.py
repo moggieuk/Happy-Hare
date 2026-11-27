@@ -49,7 +49,7 @@ def changes(previous, current, path=()):
 
 
 def display_color(color):
-    """Six-digit hex for the viewer, grey when the colour is unset"""
+    """Six-digit hex for the Happy Hare Console, grey when the colour is unset"""
     from ..mmu_utils import MmuColorUtils
     return MmuColorUtils.color_to_rgb_hex(color, '808182')[:6]
 
@@ -160,6 +160,7 @@ class ReplayState:
                 sensors=[name for name, (_, sensor) in sensors.items() if id(sensor) in unit_sensors],
                 extruder=dict(name=unit.extruder_wrapper.name,
                               retracted_length=unit.extruder_wrapper.retracted_length,
+                              target_temperature=mmu.printer.lookup_object(unit.extruder_wrapper.name).get_heater().target_temp,
                               **unit.extruder_wrapper.get_status(now)),
                 encoder=None if encoder is None else dict(name=encoder.name, distance=encoder.get_distance(), status=encoder.get_status(now),
                     parameters=self.select(encoder, ('resolution', 'desired_headroom',
@@ -255,7 +256,7 @@ kept; the limit only bounds a consumer that stops acknowledging.
             record = None
             if source['event'] == 'config_changed':
                 delta += self._config_delta(source)
-            else:
+            elif source['event'] != 'gate_map_changed':  # Only the read it prompts is recorded
                 record = plain(source)
         except Exception:
             self.failed = True  # The source detaches a listener that raises

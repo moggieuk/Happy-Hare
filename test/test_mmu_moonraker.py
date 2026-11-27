@@ -77,7 +77,7 @@ class TestInitialisation(MoonrakerTestCase):
             'spoolman_pull_gate_map', 'spoolman_clear_spools_for_printer',
             'spoolman_set_spool_gate', 'spoolman_unset_spool_gate',
             'spoolman_get_spool_info', 'spoolman_display_spool_location',
-            'spoolman_get_spool_by_uid', 'spoolman_set_spool_uid',
+            'spoolman_get_spool_by_uid', 'spoolman_set_spool_uid', 'spoolman_migrate_tags',
             'moonraker_push_lane_data', 'moonraker_cleanup_lane_data', 'mmu_td1_request',
         }
         self.assertEqual(set(self.hh.server.remote_methods), expected)
@@ -124,6 +124,41 @@ class TestInitialisation(MoonrakerTestCase):
             self.assertFalse(hh.mmu_server.spoolman_has_extras)
         finally:
             hh.close()
+
+    def test_native_tag_api_off_below_0_27(self):
+        """Spoolman before 0.27 has no tag API (probe gets 404) - legacy extra-field path."""
+        for version in ('0.18.1', '0.26.9'):
+            with self.subTest(version=version):
+                hh = harness(spoolman_version=version)
+                try:
+                    hh.component_init()
+                    self.assertTrue(hh.mmu_server.spoolman_has_extras)
+                    self.assertFalse(hh.mmu_server.spoolman_has_tags)
+                finally:
+                    hh.close()
+
+    def test_native_tag_api_on_from_0_27(self):
+        """Spoolman >= 0.27.0 ships native NFC/RFID tag links."""
+        for version in ('0.27.0', '0.27.3', '1.0.0'):
+            with self.subTest(version=version):
+                hh = harness(spoolman_version=version)
+                try:
+                    hh.component_init()
+                    self.assertTrue(hh.mmu_server.spoolman_has_extras)
+                    self.assertTrue(hh.mmu_server.spoolman_has_tags)
+                finally:
+                    hh.close()
+
+    def test_native_tag_api_off_when_too_old_or_unreachable(self):
+        for kwargs, offline in (({'spoolman_version': '0.17.0'}, False), ({}, True)):
+            with self.subTest(kwargs=kwargs, offline=offline):
+                hh = harness(**kwargs)
+                try:
+                    hh.db.offline = offline
+                    hh.component_init()
+                    self.assertFalse(hh.mmu_server.spoolman_has_tags)
+                finally:
+                    hh.close()
 
     def test_unreachable_spoolman_does_not_raise(self):
         hh = harness()
@@ -544,6 +579,46 @@ class TestLaneData(MoonrakerTestCase):
         self.assertEqual(lane['nozzle_temp'], 210)
         self.assertIsNone(lane['spool_id'])
 
+    def test_unknown_gate_without_spool_id_keeps_local_metadata(self):
+        self.hh.klippy.extra_status = {
+            'gate_status': [-1, 0, 0, 0],
+            'gate_filament_name': ['PLA Basic', '', '', ''],
+            'gate_material': ['PLA', '', '', ''],
+            'gate_vendor': ['Bambu Lab', '', '', ''],
+            'gate_color': ['00ae42', '', '', ''],
+            'gate_temperature': [210, 200, 200, 200],
+        }
+
+        self.hh.call_remote('moonraker_push_lane_data', gate_ids=[(0, -1)])
+
+        lane = self.hh.server.database.store['lane_data']['lane0']
+        self.assertEqual(lane['name'], 'PLA Basic')
+        self.assertEqual(lane['material'], 'PLA')
+        self.assertEqual(lane['vendor_name'], 'Bambu Lab')
+        self.assertEqual(lane['color'], '00ae42')
+        self.assertEqual(lane['nozzle_temp'], 210)
+        self.assertIsNone(lane['spool_id'])
+
+    def test_unknown_gate_without_local_metadata_is_empty(self):
+        self.hh.klippy.extra_status = {
+            'gate_status': [-1, 0, 0, 0],
+            'gate_filament_name': ['', '', '', ''],
+            'gate_material': ['', '', '', ''],
+            'gate_vendor': ['', '', '', ''],
+            'gate_color': ['', '', '', ''],
+            'gate_temperature': [200, 200, 200, 200],
+        }
+
+        self.hh.call_remote('moonraker_push_lane_data', gate_ids=[(0, -1)])
+
+        lane = self.hh.server.database.store['lane_data']['lane0']
+        self.assertIsNone(lane['name'])
+        self.assertIsNone(lane['material'])
+        self.assertIsNone(lane['vendor_name'])
+        self.assertIsNone(lane['color'])
+        self.assertIsNone(lane['nozzle_temp'])
+        self.assertIsNone(lane['spool_id'])
+
 
 class TestGateAssignment(MoonrakerTestCase):
     SPOOLS = (dict(uid=KNOWN_UID, material='PLA'),
@@ -622,6 +697,29 @@ class TestSpoolCreatedAfterStartup(MoonrakerTestCase):
         attrs = self.gate_map()[2]
         self.assertEqual(attrs['spool_id'], self.sid)
         self.assertEqual(attrs['material'], 'PETG')
+
+
+class TestReadonlyGetFilaments(MoonrakerTestCase):
+    """
+    #1571: spoolman_support: readonly only ever calls spoolman_get_filaments. Straight
+    after a Moonraker restart nothing else has run _initialize_mmu() yet, so the
+    backend was never detected and the gate map update was silently dropped.
+    """
+
+    SPOOLS = (dict(material='PETG', vendor='Polymaker', extruder_temp=240),)
+
+    def test_get_filaments_sends_attributes_before_backend_init(self):
+        self.assertFalse(hasattr(self.hh.mmu_server, 'mmu_backend_present'),
+                         'precondition: nothing has initialized the MMU backend yet')
+        self.hh.call_remote('spoolman_get_filaments', gate_ids=[(0, 1)], silent=True,
+                            refresh=True)
+        cmd = self.last_gcode()
+        self.assertIsNotNone(cmd, 'get_filaments must send the gate map update')
+        attrs = ast.literal_eval(cmd.split('MAP="', 1)[1].split('"', 1)[0])[0]
+        self.assertEqual(attrs['spool_id'], 1)
+        self.assertEqual(attrs['material'], 'PETG')
+        self.assertEqual(attrs['vendor'], 'Polymaker')
+        self.assertEqual(attrs['temp'], 240)
 
 
 class TestSpoolWeight(MoonrakerTestCase):

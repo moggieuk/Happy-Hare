@@ -3,16 +3,13 @@ config MMU_TYPE_QIDI_BOX_1_0
   help
     QIDI Box is a four-gate type-B MMU with one always-engaged gear
     motor per gate, a shared hub sensor, pre-gate sensors, a tension
-    feedback buffer, and a built-in filament dryer. The stock stepper
-    drivers are configured in hardware rather than through TMC UART.
+    feedback buffer (or, on a Plus4, a filament motion sensor), and a
+    built-in filament dryer. The stock stepper drivers are configured
+    in hardware rather than through TMC UART.
   select VIRTUAL_SELECTOR
   select MMU_HAS_SENSOR_ENTRY
   select MMU_HAS_SENSOR_SHARED_EXIT
   select MMU_HAS_SENSOR_EXTRUDER
-  select MMU_HAS_SYNC_FEEDBACK_BUFFER
-  select MMU_HAS_SENSOR_BUFFER_TENSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
-  select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
-  select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
   imply  MMU_HAS_ENVIRONMENT_SENSOR
   imply  MMU_HAS_HEATER
   select PARAM_FILAMENT_ALWAYS_GRIPPED
@@ -22,6 +19,32 @@ config MMU_TYPE_QIDI_BOX_1_0
   select PARAM_SYNC_TO_EXTRUDER
   select PARAM_SYNC_FORM_TIP
   select PARAM_SYNC_PURGE
+
+# -------------------------------------
+# Hub: buffer or motion sensor
+# -------------------------------------
+
+if MMU_TYPE_QIDI_BOX_1_0
+  config OPTION_QIDI_BOX_BUFFER
+    bool "Q2/Max4 hub buffer (not a Plus4)"
+    default y
+    help
+      The Box's hub decides what its PB0 input reads. The Q2 and Max4 hubs
+      have a filament buffer with a tension switch on PB0. The Plus4 hub has
+      a filament motion sensor there instead, used here as an encoder.
+      Deselect for a Box connected to a Plus4.
+    select MMU_HAS_SYNC_FEEDBACK_BUFFER
+    select MMU_HAS_SENSOR_BUFFER_TENSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+
+  config MMU_HAS_ENCODER
+    default y if !OPTION_QIDI_BOX_BUFFER
+  # About 3 mm of filament per motion-sensor pulse; calibration replaces it
+  config PARAM_ENCODER_RESOLUTION
+    default 3.0 if !OPTION_QIDI_BOX_BUFFER
+endif
+
 
 if MMU_TYPE_QIDI_BOX_1_0
 

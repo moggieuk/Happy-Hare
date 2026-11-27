@@ -11,7 +11,7 @@
 # particular depends on MmuNfcEndstop.home_start pinning triggered=True (tag detection is
 # the trigger regardless of direction) which had never been executed.
 #
-# GEOMETRY. Model defaults: park -100, entry -50, gate/exit 0, NFC reader -80, read window
+# GEOMETRY. Model defaults: park -100, entry -150, gate/exit 0, NFC reader -80, read window
 # +/-15mm. A tag rides `offset` mm behind the filament tip, since physically the tag is on
 # the spool rather than the tip.
 #
@@ -907,6 +907,37 @@ class TestSharedGateOccupancyAcrossUnits(unittest.TestCase):
                         "gate 4 shares unit1's occupied shared exit")
         self.assertFalse(hh.mmu._shared_gate_path_occupied('mmu_shared_exit', 0),
                          "gate 0 is on unit0, whose shared exit is clear")
+
+
+class TestScanKeepsFilamentGripped(unittest.TestCase):
+    """A full scan sweep on the shipped window never pulls filament out of the entry switch."""
+
+    def test_entry_stays_covered_through_the_sweep(self):
+        for name in ('qidi', 'ercf_vvd'):
+            with self.subTest(profile=name):
+                hh = session(name, virtual_nfc=True)
+                self.addCleanup(hh.close)
+                hh.boot()
+                fil = hh.filament()
+                mmu = hh.mmu
+                gate = next(g for g in range(mmu.num_gates)
+                            if mmu.mmu_unit(g).nfc_manager is not None
+                            and mmu.mmu_unit(g).nfc_manager.has_gate_nfc_reader(g))
+                hh.place_filament(gate, position=-40.)
+                hh.run_gcode('MMU_PRELOAD GATE=%d' % gate)
+
+                entry = []
+                advance = fil.advance
+
+                def traced(*args, **kwargs):
+                    result = advance(*args, **kwargs)
+                    entry.append(fil.triggered('mmu_entry_%d' % gate))
+                    return result
+                fil.advance = traced
+                hh.run_gcode('MMU_NFC_SCAN GATE=%d' % gate)
+
+                self.assertTrue(entry, 'the scan did not move the filament')
+                self.assertTrue(all(entry), 'the scan pulled filament out of the entry switch')
 
 
 if __name__ == '__main__':

@@ -124,6 +124,19 @@ class SensorEnableTestCase(unittest.TestCase):
         self.assertEqual(hh.errors, [])
         self.assertTrue(any('shared-gate endstop' in line for line in hh.console))
 
+    def test_disabling_unused_shared_sensor_does_not_warn(self):
+        # ercf_vvd homes its gates to the encoder, so the extruder sensor guards nothing
+        hh = session('ercf_vvd')
+        try:
+            hh.boot()
+            hh.gcode.console.clear()
+            hh.run_gcode('MMU_SENSORS SENSOR=default:extruder ENABLE=0')
+            self.assertEqual(hh.errors, [])
+            self.assertTrue(any("Sensor 'default:extruder' disabled" in line for line in hh.console))
+            self.assertFalse(any('shared-gate endstop' in line for line in hh.console))
+        finally:
+            hh.close()
+
     def test_report_has_no_trailing_newline(self):
         hh = self.hh
         hh.gcode.console.clear()

@@ -548,6 +548,19 @@ class TestBootupOutput(unittest.TestCase):
         self.assertTrue(console.startup_output, 'no bootup output captured at all')
         self.assertTrue(console.hh.fired('mmu:bootup'), 'bootup never ran')
 
+    def test_a_gate_left_unknown_is_one_its_sensors_cannot_vouch_for(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--no-log', '--plain', '--profile', 'boxturtle2_ercf', '--seed', '3']))
+        self.addCleanup(console.close)
+        console.boot()
+        from extras.mmu.mmu_constants import GATE_UNKNOWN
+        mmu = console.hh.mmu
+        unknown = [gate for gate in range(mmu.num_gates) if mmu.gate_maps.gate_status[gate] == GATE_UNKNOWN]
+        self.assertTrue(unknown, 'the seed left no gate unknown')
+        for gate in unknown:
+            self.assertIsNot(mmu.sensor_manager.check_gate_sensor('mmu_exit', gate), True,
+                             'gate %d is unknown with filament at its exit sensor' % gate)
+
     def test_the_welcome_message_reaches_the_banner(self):
         console = console_mod.Console(console_mod.parse_args(
             ['--no-preload', '--no-log', '--plain']))
@@ -872,6 +885,17 @@ class TestPinnedHeader(unittest.TestCase):
         self.assertIsNotNone(region, 'no scroll region reserved during install')
         self.assertLess(out.index('\x1b[2J'), region.start(),
                         'region reserved before the screen was cleared')
+        self._capture(pin.restore)
+
+    def test_a_header_that_changes_height_leaves_the_cursor_at_the_bottom_of_the_log(self):
+        """The prompt is down there; sending the cursor to the top of the log writes over what is on screen."""
+        pin = self._pin()
+        self._capture(pin.install)
+        pin.console.header_lines = lambda: ['line one', 'line two', 'line three']
+        out = self._capture(lambda: self.assertTrue(pin.repaint()))
+        top, bottom, row = map(int, __import__('re').search(r'\x1b\[(\d+);(\d+)r\x1b8\x1b\[(\d+);1H', out).groups())
+        self.assertEqual(row, bottom)
+        self.assertFalse(self._capture(lambda: self.assertFalse(pin.repaint())).count('r\x1b8'))
         self._capture(pin.restore)
 
     def test_each_header_row_resets_before_erasing(self):
@@ -1565,6 +1589,17 @@ class TestLiveClock(unittest.TestCase):
             console._tick()
         self.assertEqual(console.advance.call_args[0][0], console_mod.LIVE_MAX_CATCHUP)
 
+    def test_a_command_run_for_the_web_ui_is_not_counted_again_by_the_tick(self):
+        console = self._console(['--live'])
+        console.advance = mock.Mock()
+        wall = [499.125]
+        console._service_bridge = lambda: wall.__setitem__(0, wall[0] + 7.0)    # a paced MMU_LOAD
+        with mock.patch.object(console_mod.time, 'monotonic', side_effect=lambda: wall[0]):
+            console._last_tick = 499.0
+            console._tick()
+        self.assertAlmostEqual(console.advance.call_args[0][0], 0.125, places=3)
+        self.assertAlmostEqual(console._last_tick, 506.125, places=3)
+
     def test_a_failing_tick_stops_the_clock_instead_of_repeating(self):
         console = self._console(['--live'])
         console.advance = mock.Mock(side_effect=RuntimeError('reactor went bang'))
@@ -2166,6 +2201,7 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('host 127.0.0.1  port %d' % port, out)
         self.assertIn('--no-serve', out)
         self.assertIn('VUE_APP_PORT=%d' % port, out)
+        self.assertIn('http://127.0.0.1:%d/sim/console/' % port, out)
 
     def test_web_command_is_printed_to_terminal_and_executed(self):
         console = self._make_console(['--no-log', '--no-serve', '--header', 'off'])
@@ -2196,33 +2232,99 @@ class TestConsoleScript(unittest.TestCase):
             bridge.host, bridge.port = '192.168.0.157', 7125
             console._start_bridge(7125)
             self.assertEqual(bridge_type.call_args.kwargs['host'], '192.168.0.157')
-            self.assertIn('http://192.168.0.157:7125', console.web_api_lines()[0])
+            self.assertIn('http://192.168.0.157:7125/sim/console/', console.web_api_lines()[1])
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 console._meta_web([])
             self.assertIn('VUE_APP_HOSTNAME=192.168.0.157', out.getvalue())
         console.bridge = None
 
-    def test_default_web_api_port_is_7125(self):
+    def test_default_web_port_is_7125(self):
         from test.console import API_PORT, parse_args
         self.assertEqual(parse_args([]).serve_host, '127.0.0.1')
         self.assertEqual(API_PORT, 7125)
         self.assertEqual(parse_args(['--serve']).serve, 7125)
         self.assertEqual(parse_args(['--serve', '8771']).serve, 8771)
 
-    def test_a_taken_port_warns_without_stopping_console_or_trying_another(self):
+    def test_a_resize_during_a_repaint_is_painted_afterwards_not_inside_it(self):
+        from test.console import PinnedHeader
+        console = self._make_console(['--no-log', '--header', 'machine'])
+        header = PinnedHeader(console)
+        header.active = True
+
+        class Out:
+            busy, resizes, flushes = False, 1, 0
+            def write(self, text):
+                pass
+            def flush(self):
+                if self.busy:
+                    raise RuntimeError('reentrant call inside stdout')
+                self.busy, self.flushes = True, self.flushes + 1
+                try:
+                    if self.resizes:
+                        self.resizes -= 1
+                        header._on_resize()         # the next SIGWINCH lands mid-flush
+                finally:
+                    self.busy = False
+
+        out = Out()
+        with mock.patch('test.console.raw_stdout', return_value=out):
+            header._on_resize()
+        self.assertGreaterEqual(out.flushes, 3)     # the interrupted paint finished, then one more ran
+
+    def test_a_resize_repaints_the_log_and_the_prompt_as_well_as_the_header(self):
+        from test.console import PinnedHeader
+        console = self._make_console(['--no-log', '--header', 'machine'])
+        console.pinned = header = PinnedHeader(console)
+        header.active, console._at_prompt = True, True
+        out = io.StringIO()
+        with mock.patch('test.console.raw_stdout', return_value=out), mock.patch.object(sys.stdout, 'isatty', return_value=True), \
+                mock.patch.object(console, 'redraw') as redraw:
+            header._on_resize()
+        redraw.assert_called_once_with()
+        self.assertTrue(out.getvalue().endswith(console.prompt()))
+
+    def test_gate_status_wraps_to_the_terminal_so_the_leds_keep_their_own_row(self):
+        import os, re, shutil
+        console = self._make_console(['--no-log', '--header', 'gates,leds'])
+        with mock.patch.object(shutil, 'get_terminal_size', return_value=os.terminal_size((40, 24))):
+            lines = console._hdr_gates(console._status())
+        self.assertGreater(len(lines), 1)
+        for line in lines:
+            self.assertLessEqual(len(re.sub(r'\x1b\[[0-9;]*m', '', line)), 40, line)
+
+    def test_a_taken_default_port_moves_to_a_free_one_and_says_so(self):
         taken = socket.socket()
         self.addCleanup(taken.close)
         taken.bind(('127.0.0.1', 0))
         taken.listen(1)
         port = taken.getsockname()[1]
         console = self._make_console(['--no-log', '--header', 'off'])
+        self.addCleanup(console.close)
         console._start_bridge(port)
-        self.assertIsNone(console.bridge)
-        self.assertIn('Console remains available', console.web_api_lines()[0])
-        console._start_bridge(port, explicit=True)   # named: left alone, and said so
+        self.assertNotIn(console.bridge.port, (port, 0))
+        lines = console.web_api_lines()
+        self.assertIn('Warning: port %d is in use' % port, lines[0])
+        self.assertIn('http://127.0.0.1:%d/sim/console/' % console.bridge.port, '\n'.join(lines))
+
+    def test_a_taken_named_port_warns_without_stopping_console_or_trying_another(self):
+        taken = socket.socket()
+        self.addCleanup(taken.close)
+        taken.bind(('127.0.0.1', 0))
+        taken.listen(1)
+        port = taken.getsockname()[1]
+        console = self._make_console(['--no-log', '--header', 'off'])
+        console._start_bridge(port, explicit=True)
         self.assertIsNone(console.bridge)
         self.assertIn('Web API not started: port %d' % port, console.web_api_lines()[0])
+        self.assertIn('Console remains available', console.web_api_lines()[0])
+
+    def test_help_shows_how_to_choose_the_port_and_address(self):
+        from test.console import parse_args
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            parse_args(['--help'])
+        self.assertIn("make console ARGS='--profile boxturtle2_ercf --serve 7131 --serve-host 0.0.0.0'", out.getvalue())
 
     def test_meta_commands_do_not_crash(self):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
@@ -2437,6 +2539,37 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertIn('Ready', joined, 'precondition: this is the bootup output')
         self.assertNotIn('Unknown', joined)
 
+    def test_an_interactive_start_picks_its_own_seed_and_a_script_or_given_seed_does_not(self):
+        parse = console_mod.parse_args
+        self.assertGreater(console_mod.startup_seed(parse(['--no-log'])), 0)
+        self.assertIsNone(console_mod.startup_seed(parse(['--no-log', '--script', 'x'])))
+        self.assertEqual(console_mod.startup_seed(parse(['--no-log', '--seed', '7'])), 7)
+
+    def test_preloads_park_behind_the_encoder_on_a_machine_with_two_encoders(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'ercf_quattrobox', '--no-serve', '--no-moonraker', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertLess(max(console.fil.tip[:8]), console.fil.layout['mmu_encoder'])
+        self.assertFalse(console.hh.sensors()['unit0:mmu_shared_exit'].runout_helper.filament_present)
+
+    def test_a_seeded_start_leaves_the_spent_spool_empty_and_bootup_corrects_what_its_sensors_can(self):
+        from test.hh.filament import TIP_ABSENT
+        console = console_mod.Console(console_mod.parse_args(
+            ['--profile', 'boxturtle', '--seed', '5', '--no-serve', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        mmu = console.hh.mmu
+        self.assertEqual(mmu.gate_remaining_weight[1], 0)
+        self.assertEqual(mmu.gate_status[1], 0)
+        self.assertEqual(console.fil.tip[1], TIP_ABSENT)
+        # Every BoxTurtle gate has an exit sensor, so bootup resolves the gates seeded unknown
+        self.assertIn(console._weathered_gate_status().count(-1), (1, 2))
+        self.assertEqual(list(mmu.gate_status).count(-1), 0)
+        table = next(m for m in console.startup_output if 'Avail: ' in m)
+        self.assertIn(' - ', table.split('Avail: ')[1].split('\n')[0].replace('\xa0', ' '))
+        self.assertEqual(self.console.hh.mmu.gate_status.count(1), self.console.hh.mmu.num_gates)  # No seed: untouched
+
     def test_priming_is_reproducible_and_varied(self):
         """
         Seeded on purpose: the point is data that LOOKS real, not data that changes every run.
@@ -2609,7 +2742,10 @@ class TestTheDefaultProfile(unittest.TestCase):
 
         self.assertGreater(len(seen), 50, 'a whole load produced only a handful of updates')
         self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
-        self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
+        # The load ends retracted to reduce ooze, and that toolhead move is walked too
+        fed = seen[:seen.index(max(seen)) + 1]
+        self.assertEqual(fed, sorted(fed), 'a load should only feed filament forwards until its final retraction')
+        self.assertLess(max(seen) - seen[-1], 5.)
 
     def test_gate9_compression_rises_only_during_forced_extruder_home(self):
         """ViViD's buffer must stay uncompressed throughout its Bowden move."""
@@ -3192,3 +3328,155 @@ class TestBufferAndEncoderCommands(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class TestToolheadMacrosTakeTime(unittest.TestCase):
+    def test_cutting_and_forming_a_tip_last_long_enough_to_be_seen_when_paced(self):
+        for profile, action in (('ercf_vvd', 'Cutting Tip'), ('tradrack', 'Forming Tip')):
+            with self.subTest(profile=profile), no_tty():
+                console = console_mod.Console(console_mod.parse_args(
+                    ['--profile', profile, '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+                self.addCleanup(console.close)
+                console.boot()
+                seen = set()
+                console.hh.printer.harness_pace_observer = lambda: seen.add(console.hh.mmu.get_status(0)['action'])
+                console.hh.set_pacing(0.2, wall=False)
+                console.run_command('MMU_LOAD')
+                console.run_command('MMU_UNLOAD')
+                self.assertIn(action, seen)
+
+    def test_a_purge_lasts_long_enough_to_be_seen_when_paced(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            seen = set()
+            console.hh.printer.harness_pace_observer = lambda: seen.add(console.hh.mmu.get_status(0)['action'])
+            console.hh.set_pacing(0.2, wall=False)
+            console.run_command('MMU_SELECT GATE=0')
+            console.run_command('MMU_LOAD')
+            self.assertIn('Purging', seen)
+
+
+class TestToolheadMovesArePaced(unittest.TestCase):
+    def _console(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+        self.addCleanup(console.close)
+        with no_tty():
+            console.boot()
+        return console
+
+    def test_a_toolhead_move_and_a_dwell_take_their_own_time_when_paced(self):
+        console = self._console()
+        reactor = console.hh.reactor
+        console.run_command('M83')
+        start = reactor.monotonic()
+        console.run_command('G1 E10 F300')
+        self.assertEqual(reactor.monotonic(), start)          # Unpaced: no time at all
+        console.hh.set_pacing(1., wall=False)
+        console.run_command('G1 E10 F300')
+        console.run_command('G4 P500')
+        self.assertAlmostEqual(reactor.monotonic() - start, 2.5, places=3)
+
+    def test_a_restored_position_is_moved_to_at_the_speed_given_in_mm_per_second(self):
+        console = self._console()
+        toolhead = console.hh.printer.lookup_object('toolhead')
+        console.run_command('SAVE_GCODE_STATE NAME=here')
+        console.run_command('G91')
+        console.run_command('G1 X10 F600')
+        console.run_command('RESTORE_GCODE_STATE NAME=here MOVE=1 MOVE_SPEED=200')
+        self.assertEqual(toolhead.moves[-1][1], 200.)
+
+
+class TestLiveFilamentPosition(unittest.TestCase):
+    def test_the_live_position_advances_through_a_paced_move_and_ends_where_it_was_sent(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            mmu, reactor = console.hh.mmu, console.hh.reactor
+            seen = set()
+            console.hh.printer.harness_pace_observer = lambda: seen.add(mmu.get_status(reactor.monotonic())['filament_position_live'])
+            console.hh.set_pacing(0.2, wall=False)
+            console.run_command('MMU_SELECT GATE=0')
+            console.run_command('MMU_LOAD')
+            status = mmu.get_status(reactor.monotonic())
+            self.assertGreater(status['filament_position'], 700.)
+            self.assertAlmostEqual(status['filament_position_live'], status['filament_position'], delta=0.1)
+            self.assertGreater(len([pos for pos in seen if 100. < pos < 700.]), 5)   # The Bowden move, which filament_position reports only once it ends
+
+
+class TestIdleTimeoutStandIn(unittest.TestCase):
+    def test_a_pause_after_a_load_reports_when_the_idle_timeout_expires_and_then_expires(self):
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'ercf_vvd', '--no-serve', '--no-log', '--plain', '--header', 'off', '--pace', '0']))
+            self.addCleanup(console.close)
+            console.boot()
+            hh = console.hh
+            idle = hh.printer.lookup_object('idle_timeout')
+            console.run_command('MMU_LOAD')
+            console.run_command('MMU_PAUSE FORCE_IN_PRINT=1')
+            self.assertEqual(idle.state, 'Ready')
+            now = hh.reactor.monotonic()
+            deadline = hh.mmu.get_status(now)['idle_timeout_time']
+            self.assertGreater(deadline, now)
+            console._meta_advance(['5'])
+            self.assertEqual(hh.mmu.get_status(hh.reactor.monotonic())['idle_timeout_time'], deadline)
+            console.run_command('SET_IDLE_TIMEOUT TIMEOUT=30')
+            console._meta_advance(['31'])
+            self.assertEqual(idle.state, 'Idle')
+            self.assertIsNone(hh.mmu.get_status(hh.reactor.monotonic())['idle_timeout_time'])
+
+
+class TestWebProfileRestart(unittest.TestCase):
+    def test_the_web_console_asks_for_real_speed_and_a_restart_keeps_what_it_asked_for(self):
+        from test.hh.webui_bridge import WebUiBridge
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
+            self.addCleanup(console.close)
+            console.boot()
+            bridge = console.bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            bridge.set_pace = console._pace_for_web
+            console._restart_for_web('boxturtle')
+            self.assertEqual(console.hh.pacing, 0.5)   # A restart alone leaves the launch pace
+            self.assertEqual(bridge.rpc_sim_console_pace(None, {'realtime': True}), {'pace': 1.})
+            console._restart_for_web('boxturtle')
+            self.assertEqual(console.hh.pacing, 1.)
+            self.assertEqual(bridge.rpc_sim_console_pace(None, {'realtime': False}), {'pace': 0.5})
+
+    def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
+        from test.hh.webui_bridge import WebUiBridge
+        with no_tty():
+            console = console_mod.Console(console_mod.parse_args(
+                ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
+            self.addCleanup(console.close)
+            console.boot()
+            bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            console.bridge = bridge
+            batches = []
+            first = bridge.telemetry_stream.subscribe('console', batches.append, lambda: False)
+            for profile in ('boxturtle', 'ercf_vvd'):
+                with self.subTest(profile=profile):
+                    previous_mmu = console.hh.mmu
+                    console._restart_for_web(profile)
+                    stream = bridge.telemetry_stream
+                    self.assertIs(stream.mmu, console.hh.mmu)
+                    self.assertIs(stream.capture, bridge.console_support.telemetry_capture)
+                    self.assertIsNot(stream.mmu, previous_mmu)
+                    stream.pump()
+                    baseline = batches[-1]
+                    self.assertTrue(baseline['reset'])
+                    self.assertNotEqual(baseline['stream_id'], first['stream_id'])
+                    self.assertEqual(baseline['records'][0]['session_id'], console.hh.mmu.movement_telemetry.session_id)
+                    stream.ack('console', first['stream_id'], first['delivery_id'])
+                    self.assertIsNotNone(stream.clients['console']['inflight'])
+                    stream.ack('console', baseline['stream_id'], baseline['delivery_id'])
+                    console.hh.mmu.movement_telemetry.state('cut')
+                    stream.pump()
+                    self.assertTrue(any(r['event'] == 'cut' for r in batches[-1]['records']))
+                    first = baseline

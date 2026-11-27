@@ -409,6 +409,12 @@ class TestCutFragmentPersistence(unittest.TestCase):
         self.wrapper._handle_connect()
         self.assertEqual(self.wrapper.filament_cut_fragment, 7.5)
 
+    def test_status_lengths_are_rounded_to_two_decimals(self):
+        self.wrapper.filament_cut_fragment = 12.345678
+        status = self.wrapper.get_status(0)
+        self.assertEqual(status['filament_cut_fragment'], 12.35)
+        self.assertEqual(status['extruder_filament_remaining'], round(status['extruder_filament_remaining'], 2))
+
 
 if __name__ == '__main__':
     unittest.main()
