@@ -872,6 +872,7 @@ class MmuController(MmuFilamentMovement):
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'action': self._get_action_string(),
             'sync_drive': self.drive().is_synced_to_extruder(),
+            'sync_mode': self.drive().get_sync_mode(), # DRIVE_* mode: sync_drive is only the gear following the extruder
             'hotend_off_time': self.hotend_off_time, # When (reactor time) the paused extruder's heater goes off, else None
             'idle_timeout_time': self._idle_timeout_time(eventtime) if self.is_mmu_paused() else None, # When (reactor time) the idle timeout expires while the MMU is paused, else None
             'reason_for_pause': self.psm.reason_for_pause if self.is_mmu_paused() else "",
