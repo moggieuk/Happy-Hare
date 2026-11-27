@@ -58,6 +58,16 @@ class TestLiveStatus(unittest.TestCase):
         self.assertGreater(len(feeding), 50)
         self.assertFalse([s for s in feeding if s[0] < s[1] - 0.1][:5])
 
+    def test_the_drive_sync_mode_is_reported_as_well_as_the_gear_following_the_extruder(self):
+        from extras.mmu.mmu_constants import DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER
+        mmu = self.hh.mmu
+        mmu.drive().sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
+        status = mmu.get_status(0)
+        self.assertEqual((status['sync_mode'], status['sync_drive']), (DRIVE_EXTRUDER_SYNCED_TO_GEAR, False))
+        mmu.drive().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        status = mmu.get_status(0)
+        self.assertEqual((status['sync_mode'], status['sync_drive']), (DRIVE_GEAR_SYNCED_TO_EXTRUDER, True))
+
     def test_runtime_edits_are_reported_against_their_config_section(self):
         mmu = self.hh.mmu
         self.assertNotIn('mmu_toolhead default', mmu.get_status(0)['config_changes'])
