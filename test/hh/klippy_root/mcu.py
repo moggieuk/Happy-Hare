@@ -26,7 +26,9 @@ TRSYNC_TIMEOUT = 0.025
 # table at extras/mmu/mmu_sensor_utils.py:410-435 and the _endstop_trigger_time
 # overrides in MmuAdcSwitchSensor and MmuNfcEndstop). If the two clocks were
 # numerically identical, every clock-domain bug in that code would be invisible.
-HOST_OFFSET = 1234.5
+# Keep normal print times positive at the reactor's 1000s start, while eventtime 0
+# still produces a negative clock for invalid-time regression tests.
+HOST_OFFSET = 123.5
 
 
 class error(Exception):

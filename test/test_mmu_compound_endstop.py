@@ -20,9 +20,9 @@
 #   harness MCU_endstop        hit -> print_time | no trigger -> raises
 #
 # so "triggered" is `no exception and value != 0.` - deliberately NOT Klipper's own
-# `> 0.` (klippy/extras/homing.py). Print times are not necessarily positive: this
-# harness offsets them by HOST_OFFSET=1234.5 against a reactor starting at 1000.0, so a
-# perfectly good trigger time here is about -234.5. See test_a_negative_trigger_time_counts.
+# `> 0.` (klippy/extras/homing.py). Explicit negative-time fixtures preserve coverage
+# of that distinction even though normal simulator print times are positive.
+# See test_a_negative_trigger_time_counts.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_compound_endstop
 #
@@ -143,10 +143,8 @@ class TestTheDiscriminator(unittest.TestCase):
 
     def test_a_negative_trigger_time_counts(self):
         """
-        Pins `!= 0.` against Klipper's `> 0.`. Harness print_time is
-        reactor(1000.) - HOST_OFFSET(1234.5) = about -234.5, so negative times are the
-        NORMAL case in tests. A `> 0.` discriminator would call every one a miss and
-        break the suite wholesale.
+        Pins `!= 0.` against Klipper's `> 0.` using an explicit negative-time
+        fixture, independent of the simulator's normal clock initialization.
         """
         c = compound((_StubMcu(trigger_time=0.), 'mmu_exit_0'),
                      (_StubVirtual(trigger_time=-234.5), 'mmu_nfc_0'))

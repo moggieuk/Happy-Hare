@@ -238,3 +238,40 @@ class TestLiveStatus(unittest.TestCase):
     def test_grip_is_already_in_selector_status(self):
         self.assertTrue({'servo', 'grip'} & set(self.hh.mmu.get_status(0)['selector']) or
                         self.hh.mmu.mmu_unit().filament_always_gripped)
+
+
+class TestLivePositionBeforeClockSync(unittest.TestCase):
+    """
+    filament_position_live asks the MCU where the stepper was at 'eventtime'. Happy Hare's own
+    get_status(0) calls (the filament position diagram, MMU_SELECT, MMU_STATUS...) pass 0, which
+    converts to a negative MCU clock. Real Klipper hands that clock to an unsigned C argument and
+    raises OverflowError; the harness's fake ignores print_time, so it is mimicked here.
+    """
+
+    def setUp(self):
+        self.hh = session('emu')
+        self.hh.boot(calibrate=True, selected_gate=0)
+        self.addCleanup(self.hh.close)
+        self.mmu = self.hh.mmu
+        stepper = self.mmu.drive()._driving_stepper.stepper
+        real = stepper.get_past_mcu_position
+
+        def like_klipper(print_time):
+            if stepper.get_mcu().print_time_to_clock(print_time) < 0:
+                raise OverflowError("can't convert negative number to unsigned")
+            return real(print_time)
+        self.past = mock.patch.object(stepper, 'get_past_mcu_position', side_effect=like_klipper)
+        self.past_mock = self.past.start()
+        self.addCleanup(self.past.stop)
+
+    def test_status_at_time_zero_does_not_raise(self):
+        status = self.mmu.get_status(0)
+        self.assertEqual(status['filament_position_live'], round(self.mmu.drive().get_filament_position(), 1))
+
+    def test_filament_position_diagram_does_not_raise(self):
+        """The path MMU_SELECT and selecting a spool take"""
+        self.assertTrue(self.mmu.get_filament_position_string())
+
+    def test_a_real_time_still_asks_the_mcu(self):
+        self.mmu.get_status(self.hh.reactor.monotonic())
+        self.assertTrue(self.past_mock.called)
