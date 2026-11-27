@@ -216,9 +216,9 @@ class HomingMove:
             winner, travel = self._resolve_selector(axis, leaves, axis.carriage, delta)
         else:
             winner, travel = self._resolve(model, leaves, delta, triggered)
-            # As Klipper's drip_move: until it halts, the stepper reports the whole move
-            if hasattr(toolhead, 'commanded_pos'):
-                toolhead.commanded_pos = target_axis
+        # As Klipper's drip_move: until it halts, the stepper reports the whole move
+        if hasattr(toolhead, 'commanded_pos'):
+            toolhead.commanded_pos = target_axis
 
         # May be None: a filament homing move with NO gate selected is something a developer
         # can genuinely provoke (_MMU_TEST's movement probes do). _resolve already bails out on
