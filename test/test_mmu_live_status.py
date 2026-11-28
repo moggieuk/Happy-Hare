@@ -250,6 +250,44 @@ class TestLiveStatus(unittest.TestCase):
                         self.hh.mmu.mmu_unit().filament_always_gripped)
 
 
+class TestPositionFollowsTheExtruder(unittest.TestCase):
+    def setUp(self):
+        self.hh = session('emu')
+        self.hh.boot(calibrate=True, selected_gate=0)
+        self.addCleanup(self.hh.close)
+        self.mmu = self.hh.mmu
+
+    def position(self):
+        return self.mmu.get_status(self.hh.reactor.monotonic())['filament_position']
+
+    def test_extruder_moves_count_whether_or_not_the_gear_is_synced(self):
+        from extras.mmu.mmu_constants import DRIVE_UNSYNCED, DRIVE_GEAR_SYNCED_TO_EXTRUDER
+        drive = self.mmu.drive()
+        start = self.position()
+        self.hh.run_gcode('M83')
+        self.hh.run_gcode('G1 E10 F600')
+        self.assertAlmostEqual(self.position() - start, 10, places=2)
+        drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        self.hh.run_gcode('G1 E10 F600')
+        self.assertAlmostEqual(self.position() - start, 20, places=2)
+        drive.sync_mode(DRIVE_UNSYNCED)
+        self.assertAlmostEqual(self.position() - start, 20, places=2)
+
+    def live(self):
+        return self.mmu.get_status(self.hh.reactor.monotonic())['filament_position_live']
+
+    def test_the_live_position_follows_mmu_commands_and_holds_between_them(self):
+        self.hh.run_gcode('M83')
+        with self.mmu.wrap_command():
+            self.hh.run_gcode('G1 E10 F600')
+            self.assertEqual(self.live(), 10.)
+        self.hh.run_gcode('G1 E10 F600')
+        self.assertEqual(self.position(), 20.)
+        self.assertEqual(self.live(), 10.)
+        self.mmu.drive().set_filament_position(5.)
+        self.assertEqual(self.live(), 5.)
+
+
 class TestLivePositionBeforeClockSync(unittest.TestCase):
     """
     filament_position_live asks the MCU where the stepper was at 'eventtime'. Happy Hare's own
@@ -275,7 +313,8 @@ class TestLivePositionBeforeClockSync(unittest.TestCase):
         self.addCleanup(self.past.stop)
 
     def test_status_at_time_zero_does_not_raise(self):
-        status = self.mmu.get_status(0)
+        with self.mmu.wrap_command():
+            status = self.mmu.get_status(0)
         self.assertEqual(status['filament_position_live'], round(self.mmu.drive().get_filament_position(), 1))
 
     def test_filament_position_diagram_does_not_raise(self):
@@ -283,5 +322,6 @@ class TestLivePositionBeforeClockSync(unittest.TestCase):
         self.assertTrue(self.mmu.get_filament_position_string())
 
     def test_a_real_time_still_asks_the_mcu(self):
-        self.mmu.get_status(self.hh.reactor.monotonic())
+        with self.mmu.wrap_command():
+            self.mmu.get_status(self.hh.reactor.monotonic())
         self.assertTrue(self.past_mock.called)

@@ -70,6 +70,7 @@ class MmuController(MmuFilamentMovement):
         self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False        # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False           # True while running QA or soak tests
+        self._commands_running = 0              # Depth of MMU commands under way
         self._gear_run_current_depth = 0        # Nesting depth of wrap_gear_current(), which locks out changes
         self.p = mmu_machine.params             # Shared Parameters shortcut
 
@@ -748,6 +749,18 @@ class MmuController(MmuFilamentMovement):
 
 
     @contextlib.contextmanager
+    def wrap_command(self):
+        """An MMU command is running, so the live filament position follows it"""
+        self._commands_running += 1
+        try:
+            yield
+        finally:
+            self._commands_running -= 1
+            if not self._commands_running:
+                self.drive().hold_position()
+
+
+    @contextlib.contextmanager
     def toolchange_scope(self, gcmd):
         """Mark the start and end of a load, unload, or toolchange for replay navigation and recording."""
         telemetry = self.movement_telemetry
@@ -860,7 +873,7 @@ class MmuController(MmuFilamentMovement):
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
             'filament_position': round(self.drive().get_filament_position(), 2),
-            'filament_position_live': round(self.drive().get_filament_position_at(eventtime), 1), # Where the move under way has got to; filament_position is where it ends
+            'filament_position_live': round(self.drive().get_filament_position_at(eventtime) if self._commands_running else self.drive().held_position(), 1), # Where the move under way has got to. Follows MMU commands only: it holds where the last one ended
             'homing': None if self.homing is None else dict(self.homing, endstops=list(self.homing['endstops'])),
             'config_changes': self.config_changes,
             'telemetry_mode': self.telemetry_api.stream.record_mode, # off, on or toolchange (MMU_TELEMETRY)
@@ -3963,6 +3976,10 @@ class MmuController(MmuFilamentMovement):
             self.disable_idle_gear_stepper(prev_gate) # Type-B: disable lane we are leaving
         self.td1.release()
         self.gate_selected = gate
+        if gate >= 0 and (prev_gate < 0 or self.drive(gate) is not self.drive(prev_gate)):
+            self.drive(gate).reset_extruder_anchor() # The extruder has not been moving this gate's filament
+        if gate >= 0:
+            self.drive(gate).hold_position()
         # --------------------------------------------------------------------
 
         new_unit_index = self.mmu_unit(gate).unit_index
