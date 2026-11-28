@@ -1,5 +1,6 @@
 # Responsible for setting:
 #   MMU_HAS_ENCODER
+#   MMU_HAS_ANALOG_ENCODER
 #
 # Encoder parameter tokens which must be inside if MMU_HAS_ENCODER clause in cfg templates:
 #   MMU_SHARED_ENCODER
@@ -93,6 +94,24 @@ if MMU_HAS_ENCODER
         MMU_SHARED_ENCODER && !SHARED_ENCODER_FOUND && PARAM_ENCODER_NAME != ""
       dim
 
+    # A shared encoder's input type belongs to its owner, not this unit's hidden choice.
+    if MMU_SHARED_ENCODER
+      shared_kind     := encoder
+      shared_name_sym := PARAM_ENCODER_NAME
+      shared_export   := MMU_HAS_ANALOG_ENCODER
+      source "components/Kconfig.shared_export"
+    endif
+
+    config MMU_HAS_ANALOG_ENCODER
+      bool "Shared encoder uses analog input?" if MMU_SHARED_ENCODER && !SHARED_ENCODER_FOUND
+      default y if !MMU_SHARED_ENCODER && CHOICE_ENCODER_TYPE_ANALOG
+      default n
+      help
+        For an encoder defined in your own config, select this if its section uses
+        analog_pin instead of encoder_pin. Another unit's encoder supplies this
+        capability automatically. Analog encoders default to no movement validation
+        or encoder homing; either can still be selected explicitly.
+
     if !MMU_SHARED_ENCODER
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
@@ -125,13 +144,45 @@ if MMU_HAS_ENCODER
           bool "Other"
           help
             Select for any other encoder and ensure you set the resolution correctly.
+
+        config CHOICE_ENCODER_TYPE_ANALOG
+          bool "Analog sensor"
+          help
+            An ADC pin instead of an encoder pin, for a sensor whose reading swings
+            as the filament moves (e.g. a Hall sensor on a magnet wheel). Sampled on
+            the host: for coarse sensors (several mm per pulse) only, and not for
+            encoder homing or move validation. A fine encoder needs a digital pin.
       endchoice
 
       config PIN_ENCODER
-        prompt "$(pad,36,Encoder pin)"
+        prompt "$(pad,36,Encoder pin)" if !CHOICE_ENCODER_TYPE_ANALOG
         validator "$(pin_validator)"
         help
           $(pin_help)
+
+      if CHOICE_ENCODER_TYPE_ANALOG
+        config PIN_ENCODER_ANALOG
+          prompt "$(pad,36,Encoder analog pin)"
+          validator "$(pin_validator)"
+          help
+            $(pin_help)
+
+        config PARAM_ENCODER_ANALOG_HIGH
+          float "$(pad,36,Analog high threshold)"
+          default 0.72
+          help
+            analog_high: a pulse is counted when the reading rises past this
+            (fraction of the ADC's full scale, 0-1). Set it between the middle
+            and the top of the reading's range as the wheel turns.
+
+        config PARAM_ENCODER_ANALOG_LOW
+          float "$(pad,36,Analog low threshold)"
+          default 0.58
+          help
+            analog_low: a pulse is counted when the reading falls past this
+            (fraction of full scale). Must be below the high threshold: the gap
+            between them keeps noise from counting.
+      endif
 
       config PARAM_ENCODER_RESOLUTION
         help
@@ -146,6 +197,7 @@ if MMU_HAS_ENCODER
         default 1.175  if CHOICE_ENCODER_TYPE_BINKY_10
         default 1.469  if CHOICE_ENCODER_TYPE_BINKY_8
         default 1.0    if CHOICE_ENCODER_TYPE_OTHER
+        default 5.0    if CHOICE_ENCODER_TYPE_ANALOG
         default 1.0
 
     endif
@@ -260,10 +312,12 @@ if MMU_HAS_ENCODER
 
     config PARAM_ENCODER_MOVE_VALIDATION
       boolint "Use encoder to validate movement distance?"
+      default 0 if MMU_HAS_ANALOG_ENCODER
       default 1
       help
         ADVANCED: Determines if encoder measurement should be used to validate movement distance.
         With a reliable encoder this can help detect loading and unloading issues.
+        Off by default for an analog sensor, whose counts arrive after the move.
 
     config PARAM_BOWDEN_APPLY_CORRECTION
       boolint

@@ -96,7 +96,8 @@ config W7
 @endrepeat@
 
 config W8
-    def_bool y if MMU_HAS_ENCODER && PIN_ENCODER = "" && !MMU_SHARED_ENCODER
+    def_bool y if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER && \
+        ((PIN_ENCODER = "" && !CHOICE_ENCODER_TYPE_ANALOG) || (PIN_ENCODER_ANALOG = "" && CHOICE_ENCODER_TYPE_ANALOG))
 
 config W9
     def_bool y if MMU_HAS_SENSOR_SHARED_EXIT && PIN_SHARED_EXIT_SENSOR = ""

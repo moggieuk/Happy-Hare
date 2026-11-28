@@ -3076,6 +3076,9 @@ class MmuController(MmuFilamentMovement):
             self.movequeue_wait()
         elif dwell is False:
             self.movequeue_wait()
+        if dwell is not None and self.has_encoder():
+            # An analog encoder's counts lag the movement: wait until they have all arrived
+            self.encoder().wait_for_counts()
 
 
     def initialize_encoder(self, dwell=False):
