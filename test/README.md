@@ -388,7 +388,7 @@ Useful flags — `make console ARGS='...'`:
 --serve [PORT]                 # choose the web API's port (default 7125, or the next free port); on by default at a terminal
 --serve-host ADDRESS          # listening address (default 127.0.0.1)
 --no-serve                     # don't serve the web API for Mainsail/Fluidd
---pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
+--pace FACTOR                  # 0=instant, 0.5=twice as fast as real, 1=real time (default)
 --wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
@@ -424,7 +424,7 @@ all. Fast, but nothing time-driven is observable — an LED effect never reaches
 and every action transition lands in the same instant.
 
 `/pace FACTOR` spends that fraction of each move's *real* duration in virtual time: `0` is
-instant, `0.5` twice as fast as real (the default), `1` roughly real time. While it is on, the
+instant, `0.5` twice as fast as real, `1` roughly real time (the default). While it is on, the
 `machine` header carries `realtime=<n>%` next to the clock — that is the field it explains,
 since `t=` only moves during an operation when pacing is on. Absent at `0`. Each move's duration
 is already known — `MmuStepper._submit_move` computes the real trapezoid — so this is HH's own
