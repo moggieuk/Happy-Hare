@@ -469,6 +469,49 @@ class TestHandWrittenConfig(unittest.TestCase):
             self.boot(edit)
         self.assertIn('defaults to', str(ctx.exception))
 
+    def test_preload_inherits_explicit_encoder_homing(self):
+        for preload in (None, ''):
+            with self.subTest(preload=preload):
+                def edit(fc):
+                    section = 'mmu_unit_parameters unit0'
+                    fc.set(section, 'gate_homing_endstop', 'encoder')
+                    if preload is None:
+                        fc.remove_option(section, 'gate_preload_endstop')
+                    else:
+                        fc.set(section, 'gate_preload_endstop', preload)
+                with self.assertLogs(level='WARNING') as logs:
+                    hh = self.boot(edit)
+                try:
+                    self.assertEqual(hh.mmu.mmu_unit(0).p.gate_preload_endstop, 'encoder')
+                    self.assertTrue(any('gate_preload_endstop' in line and
+                                        'homing stops late' in line for line in logs.output))
+                finally:
+                    hh.close()
+
+    def test_preload_inheritance_does_not_opt_in_to_default_encoder_homing(self):
+        for preload in (None, ''):
+            with self.subTest(preload=preload):
+                def edit(fc):
+                    section = 'mmu_unit_parameters unit0'
+                    fc.remove_option(section, 'gate_homing_endstop')
+                    if preload is None:
+                        fc.remove_option(section, 'gate_preload_endstop')
+                    else:
+                        fc.set(section, 'gate_preload_endstop', preload)
+                with self.assertRaisesRegex(Exception, "gate_homing_endstop defaults to 'encoder'"):
+                    self.boot(edit)
+
+    def test_explicit_preload_encoder_does_not_require_gate_encoder(self):
+        def edit(fc):
+            fc.set('mmu_unit_parameters unit0', 'gate_preload_endstop', 'encoder')
+        with self.assertLogs(level='WARNING') as logs:
+            hh = self.boot(edit)
+        self.addCleanup(hh.close)
+        self.assertNotEqual(hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'encoder')
+        self.assertEqual(hh.mmu.mmu_unit(0).p.gate_preload_endstop, 'encoder')
+        self.assertTrue(any('gate_preload_endstop' in line and
+                            'homing stops late' in line for line in logs.output))
+
     def test_explicit_move_validation_is_honoured_with_a_warning(self):
         def edit(fc):
             fc.set('mmu_unit_parameters unit0', 'encoder_move_validation', '1')

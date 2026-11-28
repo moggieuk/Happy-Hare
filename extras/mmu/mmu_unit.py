@@ -774,12 +774,11 @@ class MmuUnit:
         if encoder is None or (encoder.supports_homing() and encoder.supports_move_validation()):
             return
         params = config.getsection('mmu_unit_parameters %s' % self.name)
-        def explicit(name):
-            return params.fileconfig.has_option(params.get_name(), name)
+        present = {str(o).strip().lower() for o in params.get_prefix_options('')}
         late = "its counts arrive up to %.2fs after the move" % encoder.report_latency()
 
         if not encoder.supports_move_validation():
-            if not explicit('encoder_move_validation'):
+            if 'encoder_move_validation' not in present:
                 self.p.encoder_move_validation = 0
             elif self.p.encoder_move_validation:
                 logging.warning(
@@ -790,7 +789,12 @@ class MmuUnit:
             for name in self.ENCODER_HOMING_PARAMS:
                 if getattr(self.p, name) != SENSOR_ENCODER:
                     continue
-                if not explicit(name):
+                # Parameters have already resolved preload inheritance. Check the raw
+                # option to attribute an inherited encoder choice to the gate's opt-in.
+                source = name
+                if name == 'gate_preload_endstop' and not params.get(name, '').strip():
+                    source = 'gate_homing_endstop'
+                if source not in present:
                     raise config.error(
                         "[%s] %s defaults to '%s', but [mmu_encoder %s] is analog (%s). Set %s "
                         "to another endstop, or to '%s' to home on it anyway"
