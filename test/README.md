@@ -908,6 +908,7 @@ The test files, grouped by what they're about:
 | `test_mmu_confirm_loaded.py` | 20 | the in-print "loaded" sensor check after a toolchange or RESUME, and where it must not fire |
 | `test_mmu_pressure_advance.py` | 7 | pressure advance zeroed and restored around tip forming and purging; the already-0 debug note |
 | `test_mmu_encoder.py` | 36 | gate homing by encoder motion instead of by switch |
+| `test_mmu_stall_safe_homing.py` | 7 | opt-in stall-safe gear homing: back off, slow down and retry against a jam, then stop; off by default |
 | `test_mmu_extruder_load.py` | 8 | the encoder check on the final load to the nozzle, and skipping its shortfall test once a buffer has confirmed extruder grip |
 | `test_mmu_flowguard.py` | 11 | encoder FlowGuard on an encoder shared by two units: arming, handover on toolchange, pause/resume, runout |
 | `test_mmu_endless_spool.py` | 18 | runout detection, clog-vs-runout, gate remapping |
@@ -1082,6 +1083,10 @@ hh.sensor('mmu_entry_0').present           # what Happy Hare currently believes
 
 # run the spool out (see §5.6) — the filament keeps its tip, but loses its tail
 hh.filament().exhaust(0)
+
+# jam it: the tip can't pass 700 (or retract past `behind=`); the gear slips, so an
+# encoder stops counting and a homing move past the jam never triggers. unjam() clears it
+hh.filament().jam(0, ahead=700.)
 
 # move time forward
 hh.reactor.advance(5.0)

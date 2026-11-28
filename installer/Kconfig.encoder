@@ -7,6 +7,8 @@
 #   PARAM_ENCODER_RESOLUTION
 #   PARAM_GATE_ENDSTOP_TO_ENCODER
 #   PARAM_ENCODER_MOVE_STEP_SIZE
+#   PARAM_GEAR_HOMING_STALL_RETRIES
+#   PARAM_GEAR_HOMING_STALL_STEP
 #   PIN_ENCODER (duplicate with pins)
 #   PARAM_BOWDEN_PRE_UNLOAD_TEST
 #   PARAM_BOWDEN_PRE_UNLOAD_ERROR_TOLERANCE
@@ -174,6 +176,26 @@ if MMU_HAS_ENCODER
         extruder unload no longer than this skips the encoder check, as does
         a load once a buffer has confirmed grip. Shorter is quicker but
         harder for the encoder to see.
+
+    config PARAM_GEAR_HOMING_STALL_RETRIES
+      int "$(pad,36,Gear homing stall retries)"
+      range 0 10
+      default 0
+      help
+        0 = off. Otherwise gear homing moves go in encoder-checked steps, and
+        a step the encoder barely sees is a stall: back off 5mm, halve the
+        speed (to no less than 10mm/s) and retry, up to this many times,
+        then stop with an error instead of grinding the filament.
+
+    config PARAM_GEAR_HOMING_STALL_STEP
+      float "$(pad,36,Gear homing stall check step)"
+      range 10 100
+      default 30.0
+      help
+        Length (mm) of each encoder-checked gear homing step when stall
+        retries are on. The most the gear can grind before a stall is seen.
+        Keep it well above the gate endstop to encoder distance, the part
+        of a step the encoder may not see.
 
     if !MMU_SHARED_ENCODER
       menu "Advanced"

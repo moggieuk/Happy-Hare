@@ -3673,6 +3673,70 @@ class MmuFilamentMovement:
         return {name: value[0] for name, value in self.sensor_manager.get_sensor_states(all_sensors=True).items()}
 
 
+    STALL_BACK_OFF = 5.0        # mm, as QIDI's stock Box firmware backs off
+    STALL_MIN_SPEED = 10.0      # mm/s, the slowest a retry halves to
+
+    _stall_safe_homing = False
+
+    def _stall_safe_homing_move(self, trace_str, dist, speed, accel, homing_move, endstop_name, **kwargs):
+        """
+        A gear homing move in encoder-checked steps, as QIDI's stock Box firmware homes. A step
+        the encoder saw less than gear_homing_stall_ratio of is a stall: back off, halve the speed
+        and retry, up to gear_homing_stall_retries times, then give up. Giving up returns not
+        homed, so the caller fails as it would after the full homing distance, minus the grinding.
+
+        Returns the same tuple as move_filament, summed over the steps.
+        """
+        u = self.mmu_unit()
+        direction = 1. if dist > 0 else -1.
+        remaining = abs(dist)
+        actual = measured = delta = 0.
+        retries = 0
+        step_speed = speed
+        # Moving back toward the gate, or loading from it, up to this much of a step can be
+        # between the gate endstop and the encoder, where the encoder can't see it
+        dead_space = (self.get_encoder_dead_space()
+                      if dist < 0 or self.filament_pos <= FILAMENT_POS_HOMED_GATE else 0.)
+        self._stall_safe_homing = True
+        try:
+            while remaining > 0:
+                step = min(u.p.gear_homing_stall_step, remaining)
+                s_actual, homed, s_measured, s_delta = self.move_filament(
+                    trace_str, direction * step, speed=step_speed, accel=accel, motor="gear",
+                    homing_move=homing_move, endstop_name=endstop_name, **kwargs)
+                actual += s_actual
+                measured += s_measured
+                delta += s_delta
+                if homed:
+                    return actual, True, measured, delta
+                remaining -= abs(s_actual)
+                seeable = abs(s_actual) - dead_space
+                if seeable > 0 and abs(s_measured) < u.p.gear_homing_stall_ratio * seeable:
+                    retries += 1
+                    if retries > u.p.gear_homing_stall_retries:
+                        self.log_warning(
+                            f"Gear stalled {retries} times while {trace_str[0].lower() + trace_str[1:]}: "
+                            "stopped rather than grind the filament")
+                        return actual, False, measured, delta
+                    resolved, _ = self._resolve_filament_move_speed(
+                        step, "gear", homing_move, step_speed, accel,
+                        virtual_endstop=self._is_virtual_endstop(endstop_name))
+                    step_speed = max(resolved / 2., self.STALL_MIN_SPEED)
+                    self.log_info(
+                        f"Gear stall (encoder saw {abs(s_measured):.1f}mm of {abs(s_actual):.1f}mm): "
+                        f"backing off {self.STALL_BACK_OFF:.0f}mm, retrying at {step_speed:.0f}mm/s")
+                    self.move_filament("Stall back off", -direction * self.STALL_BACK_OFF,
+                                       speed=self.STALL_MIN_SPEED, motor="gear")
+                    remaining += self.STALL_BACK_OFF
+            return actual, False, measured, delta
+        finally:
+            self._stall_safe_homing = False
+
+    def _is_virtual_endstop(self, endstop_name):
+        drive = self.drive()
+        qualified = self.sensor_manager.get_qualified_endstop_name(endstop_name)
+        return drive.has_endstop(qualified) and isinstance(drive.get_endstop(qualified), MmuVirtualEndstopSensor)
+
     @movement_operation
     def move_filament(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0,
                       endstop_name="default", track=False, wait=False, encoder_dwell=False,
@@ -3715,6 +3779,17 @@ class MmuFilamentMovement:
             tuple[float, bool, float, float]: Actual movement, homing success flag, encoder-measured movement, and the difference between commanded and measured travel.
         """
         u = self.mmu_unit()
+        # Stall-safe gear homing. Loading toward the gate endstop, the filament usually hasn't
+        # reached the encoder yet (it sits at or after the gate endstop), so there is no motion
+        # to check until it has homed there
+        if (homing_move != 0 and motor == "gear" and not self._stall_safe_homing
+                and u.p.gear_homing_stall_retries > 0 and self.has_encoder()
+                and (dist < 0 or self.filament_pos >= FILAMENT_POS_HOMED_GATE)):
+            return self._stall_safe_homing_move(
+                trace_str, dist, speed, accel, homing_move, endstop_name,
+                track=track, wait=wait, encoder_dwell=encoder_dwell, speed_override=speed_override,
+                suppress_grip_change=suppress_grip_change, espooler=espooler)
+
         drive = self.drive()
         extruder_name = self.mmu_unit().extruder_name()
         ext_pos = self.toolhead.get_position()
