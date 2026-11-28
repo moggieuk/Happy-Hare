@@ -124,6 +124,17 @@ class TestWebUiBridge(WebUiBridgeTestCase):
         self.assertEqual(notification['method'], 'notify_mmu_telemetry')
         self.assertTrue(any(r.get('event') == 'cut' for r in notification['params'][0]['records']))
 
+    def test_a_view_can_open_the_telemetry_stream_during_a_move(self):
+        request_id = self.client.send('server.mmu.telemetry.subscribe')
+        deadline = time.monotonic() + 5.
+        while not self.bridge.inbox.qsize() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.bridge.service_during_move()
+        self.assertFalse(self.bridge.has_pending_requests())
+        reply = self.client.receive()
+        self.assertEqual(reply['id'], request_id)
+        self.assertTrue(reply['result']['records'])
+
     def test_status_changes_are_pushed_during_a_move(self):
         self.call('printer.objects.subscribe', objects=dict(mmu=['filament_pos']))
         self.hh.mmu.filament_pos += 1

@@ -445,7 +445,7 @@ class WebUiBridge:
                 method = json.loads(item[1]).get('method')
             except (ValueError, AttributeError):
                 method = None
-            if method in ('server.mmu.telemetry.ack', 'server.mmu.telemetry.unsubscribe'):
+            if method in ('server.mmu.telemetry.subscribe', 'server.mmu.telemetry.ack', 'server.mmu.telemetry.unsubscribe'):
                 self._handle(*item)
             else:
                 self._deferred_requests.append(item)
