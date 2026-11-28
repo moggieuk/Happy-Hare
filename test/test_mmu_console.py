@@ -2600,7 +2600,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         """
         hh = self.console.hh
         self.assertEqual(hh.pacing_wall, 0., 'the suite must never sleep')
-        hh.set_pacing(0.)                           # the console default is 0.5; measure from 0
+        hh.set_pacing(0.)                           # the console default is 1; measure from 0
         gate = hh.mmu.num_gates - 1
         self.console._dispatch('MMU_SELECT GATE=%d' % gate)
 
@@ -3463,21 +3463,18 @@ class TestIdleTimeoutStandIn(unittest.TestCase):
 
 
 class TestWebProfileRestart(unittest.TestCase):
-    def test_the_web_console_asks_for_real_speed_and_a_restart_keeps_what_it_asked_for(self):
+    def test_a_restart_from_the_web_keeps_the_pace_typed_at_the_console(self):
         from test.hh.webui_bridge import WebUiBridge
         with no_tty():
             console = console_mod.Console(console_mod.parse_args(
                 ['--profile', 'boxturtle', '--no-serve', '--no-log', '--plain', '--header', 'off']))
             self.addCleanup(console.close)
             console.boot()
-            bridge = console.bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
-            bridge.set_pace = console._pace_for_web
+            console.bridge = WebUiBridge(console.hh, console._run_for_bridge, port=0)
+            self.assertEqual(console.hh.pacing, 1.)   # Real time unless asked otherwise
+            console._meta_pace(['0.5'])
             console._restart_for_web('boxturtle')
-            self.assertEqual(console.hh.pacing, 0.5)   # A restart alone leaves the launch pace
-            self.assertEqual(bridge.rpc_sim_console_pace(None, {'realtime': True}), {'pace': 1.})
-            console._restart_for_web('boxturtle')
-            self.assertEqual(console.hh.pacing, 1.)
-            self.assertEqual(bridge.rpc_sim_console_pace(None, {'realtime': False}), {'pace': 0.5})
+            self.assertEqual(console.hh.pacing, 0.5)
 
     def test_restart_rebinds_connected_telemetry_for_same_and_new_profile(self):
         from test.hh.webui_bridge import WebUiBridge

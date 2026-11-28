@@ -230,7 +230,6 @@ class WebUiBridge:
         self.console_support = ConsoleSupport(session)
         self.telemetry_stream = simulator_stream(session.mmu, self.console_support.telemetry_capture)
         self.restart_profile = None
-        self.set_pace = None
         self.profile_name = ""
         self.uploads = tempfile.TemporaryDirectory(prefix="hh-console-")
         self._upload_root = None                  # The configuration directory the running session was booted from, if uploaded
@@ -717,11 +716,6 @@ class WebUiBridge:
             raise RpcError('Choose an available sensor and enabled state')
         self.run_gcode('MMU_SENSORS SENSOR=%s ENABLE=%d' % (name, params['enabled']))
         return {'enabled': bool(sensors[name][1].runout_helper.sensor_enabled)}
-
-    def rpc_sim_console_pace(self, conn, params):
-        if self.set_pace is None:
-            raise RpcError('Pacing requires the interactive console')
-        return {'pace': self.set_pace(bool(params.get('realtime')))}
 
     def rpc_sim_console_restart(self, conn, params):
         from test.hh.profiles import CONSOLE_PROFILES

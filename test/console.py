@@ -468,7 +468,6 @@ def parse_scroll_args(text):
 class Console:
     def __init__(self, args):
         self.args = args
-        self.launch_pace = args.pace
         self.color = not args.plain and sys.stdout.isatty()
         # See truecolor_supported(): guessing truecolor on a terminal without it turns
         # Happy Hare's pink warning into a pink BACKGROUND.
@@ -687,17 +686,8 @@ class Console:
                                   'Choose one with --serve PORT.' % (port, self.bridge.port))
         self.bridge_error = None
         self.bridge.restart_profile = self._restart_for_web
-        self.bridge.set_pace = self._pace_for_web
         self.bridge.profile_name = str(self.args.profile)
         self._install_pace_observer()
-
-    def _pace_for_web(self, realtime):
-        """
-        The web console's live view watches the machine as a printer runs; its telemetry view
-        keeps the pace this console was launched with. A restart from the web keeps the choice.
-        """
-        self.args.pace = 1. if realtime else self.launch_pace
-        return self.hh.set_pacing(self.args.pace, wall=self._wall_pacing())
 
     def _restart_for_web(self, profile):
         bridge, previous = self.bridge, self.args.profile
@@ -2322,6 +2312,7 @@ class Console:
             factor = self.hh.pacing
         else:
             factor = self.hh.set_pacing(args[0], wall=self._wall_pacing())
+            self.args.pace = factor   # A restart keeps it
         if not factor:
             self.info('pace=0 - moves are instant, the clock does not move')
             return
@@ -3473,9 +3464,9 @@ def parse_args(argv=None):
                         '(the default at an interactive prompt, off for a script or pipe)')
     p.add_argument('--no-wall', dest='wall', action='store_false',
                    help='with --pace, move the virtual clock but never sleep')
-    p.add_argument('--pace', type=float, default=0.5, metavar='FACTOR',
+    p.add_argument('--pace', type=float, default=1., metavar='FACTOR',
                    help='how much of each move\'s real duration to spend in virtual time: '
-                        '0 is instant, 0.5 (default) is twice as fast as real, 1 is real '
+                        '0 is instant, 0.5 is twice as fast as real, 1 (default) is real '
                         'time. Also settable live with /pace')
     p.add_argument('--trace', type=int, choices=range(4), default=0, metavar='0-3',
                    help="Happy Hare log_level; 3 is full narration")
