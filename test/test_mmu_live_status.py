@@ -58,6 +58,22 @@ class TestLiveStatus(unittest.TestCase):
         self.assertGreater(len(feeding), 50)
         self.assertFalse([s for s in feeding if s[0] < s[1] - 0.1][:5])
 
+    def test_the_live_position_moves_through_a_homing_move(self):
+        mmu = self.hh.mmu
+        self.hh.place_filament(0)
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 AVAILABLE=1')
+        homing = set()
+        def observe():
+            status = mmu.get_status(self.hh.reactor.monotonic())
+            if status['homing']:
+                homing.add(status['filament_position_live'])
+        self.hh.printer.harness_pace_observer = observe
+        self.addCleanup(setattr, self.hh.printer, 'harness_pace_observer', None)
+        self.hh.set_pacing(1.)
+        self.addCleanup(self.hh.set_pacing, 0.)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertGreater(len(homing), 10)
+
     def test_the_drive_sync_mode_is_reported_as_well_as_the_gear_following_the_extruder(self):
         from extras.mmu.mmu_constants import DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_GEAR_SYNCED_TO_EXTRUDER
         mmu = self.hh.mmu

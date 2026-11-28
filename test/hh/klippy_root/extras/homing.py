@@ -209,9 +209,9 @@ class HomingMove:
         #
         # A FILAMENT move is resolved against the filament model, which already tracks
         # position independently, and halts at start_axis + travel. That is the behavior the
-        # whole filament/sensor model was built and validated against; it does not register
-        # motion because HH measures it from commanded coordinates (do_homing_move returns
-        # trig_pos/halt_pos), never from the mcu step count.
+        # whole filament/sensor model was built and validated against. HH measures it from
+        # commanded coordinates (do_homing_move returns trig_pos/halt_pos); the travel is
+        # registered on the stepper as well, for the position read back while it moves.
         if axis is not None:
             winner, travel = self._resolve_selector(axis, leaves, axis.carriage, delta)
         else:
@@ -343,8 +343,11 @@ class HomingMove:
             yield amount
 
     def _advance_filament(self, model, gate, total, speed, reason):
+        # The stepper travels with the filament, so a position read back partway is where it has got to
         for amount in self._pace_slices(total, speed):
             model.advance(gate, amount, reason, motor_mode=self.filament_motor_mode)
+            for stepper in self.toolhead.get_steppers():
+                stepper.harness_note_motion(amount)
 
     def _move_selector(self, axis, delta, speed=None):
         """
