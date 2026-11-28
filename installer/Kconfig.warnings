@@ -11,7 +11,7 @@
 config SHOW_SHARED_WARNINGS
   bool
   depends on MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
-  @repeat var=i min=1 max=8@
+  @repeat var=i min=1 max=9@
     default y if SW$(i)
   @endrepeat@
 
@@ -22,7 +22,7 @@ config SW2
     def_bool y if MMU_HAS_SENSOR_TOOLHEAD && PIN_TOOLHEAD_SENSOR = ""
 
 config SW3
-    def_bool y if MMU_HAS_SENSOR_EXTRUDER && PIN_EXTRUDER_SENSOR = ""
+    def_bool y if MMU_HAS_SENSOR_EXTRUDER && !MMU_HAS_HALL_EXTRUDER_SENSOR && PIN_EXTRUDER_SENSOR = ""
 
 config SW4
     def_bool y if MMU_HAS_BLOBIFIER && MMU_HAS_BLOBIFIER_BUCKET_SWITCH && \
@@ -50,6 +50,10 @@ config SW7
 
 config SW8
     def_bool y if BOOL_CUSTOM_SAVE_VARIABLES
+
+config SW9
+    def_bool y if MMU_HAS_SENSOR_EXTRUDER && MMU_HAS_HALL_EXTRUDER_SENSOR && \
+        (PIN_HALL_ADC1 = "" || PIN_HALL_ADC2 = "")
 
 
 
@@ -299,6 +303,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Blobifier software SPI requires all three SCLK/MOSI/MISO pins"                    if SW6
     comment "Blobifier tray stepper is missing a step, dir, enable or endstop pin"             if SW7
     comment "Custom [save_variables]: filename must match save_variables path"                 if SW8
+    comment "Hall extruder sensor is enabled but an ADC pin is missing"                        if SW9
   endif
 
   if SHOW_PER_UNIT_WARNINGS

@@ -304,12 +304,12 @@ class TestQidiBoxMotionSensorHub(unittest.TestCase):
     A Box on a Q2 or Max4 has a filament buffer on PB0 (QIDI's stock box.cfg:
     buffer_pin: ^mcu_box1:PB0). On a Plus4 the hub carries a filament motion sensor
     instead (stock box.cfg: [filament_motion_sensor box_motion_sensor] on
-    ^mcu_box1:PB0), which Happy Hare reads as an encoder. OPTION_QIDI_BOX_BUFFER
+    ^mcu_box1:PB0), which Happy Hare reads as an encoder. BOOL_QIDI_BOX_BUFFER
     picks between them and stays on unless deselected, so existing configs keep
     their buffer.
     """
 
-    SYMS = {"MMU_TYPE_QIDI_BOX_1_0": True, "OPTION_QIDI_BOX_BUFFER": False}
+    SYMS = {"MMU_TYPE_QIDI_BOX_1_0": True, "BOOL_QIDI_BOX_BUFFER": False}
 
     @classmethod
     def setUpClass(cls):
@@ -320,7 +320,7 @@ class TestQidiBoxMotionSensorHub(unittest.TestCase):
         cls.hardware = cfg.render(cls.profile)["config/base/mmu_hardware.cfg"]
 
     def test_buffer_hub_is_the_default(self):
-        self.assertTrue(self.default.is_enabled("OPTION_QIDI_BOX_BUFFER"))
+        self.assertTrue(self.default.is_enabled("BOOL_QIDI_BOX_BUFFER"))
         self.assertTrue(self.default.is_enabled("MMU_HAS_SYNC_FEEDBACK_BUFFER"))
         self.assertFalse(self.default.is_enabled("MMU_HAS_ENCODER"))
 

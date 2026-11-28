@@ -2,8 +2,9 @@
 #
 # [mmu_toolhead] hall_sensor_endstop / hall_adc1 / hall_adc2 (Qidi-style
 # hall_filament_width_sensor pins) replace the extruder or toolhead switch with an
-# MmuHallEndstop that reads the two ADC pins through MmuAdcHelper. No shipped profile
-# sets these options, so the tests add them to the assembled config before boot.
+# MmuHallEndstop that reads the two ADC pins through MmuAdcHelper. These tests add the
+# options to a BoxTurtle's assembled config before boot; the QIDI Plus4 toolhead preset
+# renders them from Kconfig (test/test_mmu_qidi_plus4.py).
 #
 #   ./venv/bin/python -m unittest test.test_mmu_hall_endstop
 #

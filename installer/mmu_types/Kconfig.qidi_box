@@ -25,8 +25,11 @@ config MMU_TYPE_QIDI_BOX_1_0
 # -------------------------------------
 
 if MMU_TYPE_QIDI_BOX_1_0
-  config OPTION_QIDI_BOX_BUFFER
+  config BOOL_QIDI_BOX_BUFFER
     bool "Q2/Max4 hub buffer (not a Plus4)"
+    default n if TOOLHEAD_TYPE_QIDI_PLUS4
+    # Toolhead choices live in the parent config in a multi-unit installation.
+    default n if MULTI_UNIT && "$(printer_toolhead_qidi_plus4)" = "y"
     default y
     help
       The Box's hub decides what its PB0 input reads. The Q2 and Max4 hubs
@@ -39,10 +42,10 @@ if MMU_TYPE_QIDI_BOX_1_0
     select UNSELECT_MMU_HAS_SENSOR_BUFFER_PROPORTIONAL if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
   config MMU_HAS_ENCODER
-    default y if !OPTION_QIDI_BOX_BUFFER
+    default y if !BOOL_QIDI_BOX_BUFFER
   # About 3 mm of filament per motion-sensor pulse; calibration replaces it
   config PARAM_ENCODER_RESOLUTION
-    default 3.0 if !OPTION_QIDI_BOX_BUFFER
+    default 3.0 if !BOOL_QIDI_BOX_BUFFER
 endif
 
 

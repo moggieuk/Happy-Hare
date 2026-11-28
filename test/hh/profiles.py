@@ -583,6 +583,30 @@ QIDI = Profile(
         'filament_compression': 900.0,
     })
 
+# QIDI Box on a QIDI Plus4, with the Plus4 toolhead preset left at its defaults: the
+# extruder-entry sensor is the hall-effect filament width sensor on the printer's main MCU
+# (MmuHallEndstop over two ADC pins, driven by the harness from filament position), the
+# cutter blade sits before the extruder gears, and the Plus4 hub's filament motion sensor
+# on PB0 is the encoder (no buffer).
+QIDI_PLUS4 = Profile(
+    'qidi_plus4',
+    syms={
+        'MMU_TYPE_QIDI_BOX_1_0': True,
+        'TOOLHEAD_TYPE_QIDI_PLUS4': True,
+    },
+    description='QIDI Box 1.0 on a Plus4 - hall-sensor extruder entry, cutter before the extruder, '
+                'hub motion sensor as encoder',
+    # Same compact internal leg and ~750 mm hub-to-extruder leg as the qidi profile. The
+    # motion sensor is in the hub, so the encoder sits at the shared exit. The hall sensor
+    # sits where it was measured on a real Plus4, 24 mm above the gears, rather than where
+    # the config's toolhead_entry_to_extruder says, so a wrong config value shows.
+    filament_layout={
+        'mmu_shared_exit': 150.0,
+        'mmu_encoder': 150.0,
+        'extruder_entry': 900.0,
+        'extruder': 900.0 - 24.0,
+    })
+
 # QuattroBox v2 on its Chameleon X5 board, which supplies nearly everything as defaults: eject
 # buttons, a Binky encoder at the hub, a proportional buffer on the T2 port, the heater on HEAT0
 # averaging two Generic 3950 (100K NTC, beta 3950) thermistors, a Chamber BME280 as the
@@ -1119,7 +1143,7 @@ BOXTURTLE_MAX_GATES = BOXTURTLE.derive(
 # also the startup picker's source, so its list and the accepted profile objects stay one
 # thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
-CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE2_ERCF, ERCF_MMU_CUTTER, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI,
+CONSOLE_PROFILES = (ERCF_VVD, ERCF_QUATTROBOX, BOXTURTLE2_ERCF, ERCF_MMU_CUTTER, BOXTURTLE, TRADRACK, TRADRACK_ENCODER, THREE_MS, CHAMELEON, HTLF, PICO_MMU, MMX, KMS, QIDI, QIDI_PLUS4,
                     QUATTROBOX_V2, EMU, EMU_EBB, EMU_EMB_C, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_PER_GATE_SPARSE, NFC_NEIGHBOR_CHECK,
                     NFC_NEIGHBOR_EVICT, NFC_GATE_CLEAR,
