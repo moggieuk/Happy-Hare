@@ -96,9 +96,10 @@ class MmuDrive():
         if mode not in DRIVE_MODE_NAMES:
             raise self.printer.command_error(f"Invalid MMU drive sync mode: {mode}")
 
-        # Manual handoffs rebase the extruder, so include pending extrusion in
-        # the snapshot before the existing mode switches flush and rebase it.
-        if prev_mode == DRIVE_UNSYNCED and mode in (DRIVE_EXTRUDER_ONLY, DRIVE_EXTRUDER_SYNCED_TO_GEAR):
+        # Handoffs that rebase the extruder flush it first, so include pending
+        # extrusion in the snapshot before they do.
+        if prev_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER or (
+                prev_mode == DRIVE_UNSYNCED and mode in (DRIVE_EXTRUDER_ONLY, DRIVE_EXTRUDER_SYNCED_TO_GEAR)):
             self.mmu_extruder_stepper.flush_step_generation()
 
         # Before resetting the driving stepper, capture the filament position

@@ -57,7 +57,10 @@ class TestUnsyncedPositionAccounting(unittest.TestCase):
     def test_pre_unload_retraction_with_status_poll(self):
         self._unload_with_retraction(poll=True)
 
-    def _queued_retraction(self, command, wait_first=False):
+    def _queued_retraction(self, command, wait_first=False, synced=False):
+        if synced:
+            from extras.mmu.mmu_constants import DRIVE_GEAR_SYNCED_TO_EXTRUDER
+            self.drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
         toolhead = self.mmu.toolhead
         stepper = self.drive.mmu_extruder_stepper.stepper
         original_note = stepper.harness_note_motion
@@ -91,4 +94,8 @@ class TestUnsyncedPositionAccounting(unittest.TestCase):
 
     def test_composable_step_keeps_already_flushed_extrusion(self):
         delta = self._queued_retraction('_MMU_STEP_MOVE MOVE=-5 MOTOR=extruder', wait_first=True)
+        self.assertAlmostEqual(delta, -15.)
+
+    def test_composable_step_keeps_pending_synced_extrusion(self):
+        delta = self._queued_retraction('_MMU_STEP_MOVE MOVE=-5 MOTOR=extruder', synced=True)
         self.assertAlmostEqual(delta, -15.)
