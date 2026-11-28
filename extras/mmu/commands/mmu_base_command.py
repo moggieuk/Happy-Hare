@@ -116,7 +116,7 @@ class BaseCommand:
             return dispatch(gcmd)
 
         def wrapped(gcmd):
-            with self.mmu.gcode_telemetry.scope(name):
+            with self.mmu.wrap_command(), self.mmu.gcode_telemetry.scope(name):
                 return run(gcmd)
 
 

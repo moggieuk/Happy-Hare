@@ -37,6 +37,12 @@ class MmuDrive():
         self._sync_mode = DRIVE_UNSYNCED
         self._driving_stepper = self.mmu_gear_stepper
 
+        # Where the extruder stood when it last started moving filament the gear does not see
+        self._extruder_anchor = None
+
+        # The live position stays here while no MMU command is running
+        self._held_position = None
+
         # Resolved at connect. None until then, and None for a stepper with no TMC
         self._tmc = None
         self._default_current = None
@@ -90,8 +96,8 @@ class MmuDrive():
         if mode not in DRIVE_MODE_NAMES:
             raise self.printer.command_error(f"Invalid MMU drive sync mode: {mode}")
 
-        # Before resetting the driving stepper, capture it's position
-        current_pos = self._driving_stepper.get_mode_position()
+        # Before resetting the driving stepper, capture the filament position
+        current_pos = self.get_filament_position()
 
         # ------------------------------------------------------------------
         # DRIVE_UNSYNCED
@@ -101,6 +107,7 @@ class MmuDrive():
             self.mmu_gear_stepper.do_set_position(current_pos)
             self.mmu_extruder_stepper.switch_to_extruder_mode()
             self._driving_stepper = self.mmu_gear_stepper
+            self._extruder_anchor = self.mmu_extruder_stepper.stepper.get_commanded_position()
 
         # ------------------------------------------------------------------
         # DRIVE_EXTRUDER_SYNCED_TO_GEAR (gear leading, extruder following)
@@ -156,17 +163,57 @@ class MmuDrive():
 
     def set_filament_position(self, pos):
         self._driving_stepper.do_set_position(pos)
+        self.reset_extruder_anchor()
+        self._held_position = pos
 
 
     def get_filament_position(self):
-        return self._driving_stepper.get_mode_position()
+        extruder = self.mmu_extruder_stepper.stepper.get_commanded_position()
+        return self._driving_stepper.get_mode_position() + self._unsynced_extruder(extruder)
 
 
     def get_filament_position_at(self, eventtime):
         """
-        The filament position the driving stepper has reached, partway through a move
+        The filament position reached partway through a move
         """
-        return self._driving_stepper.get_live_mode_position(eventtime)
+        pos = self._driving_stepper.get_live_mode_position(eventtime)
+        if self._sync_mode == DRIVE_UNSYNCED:
+            extruder = self.mmu_extruder_stepper.get_live_stepper_position(eventtime)
+            if extruder is None:
+                extruder = self.mmu_extruder_stepper.stepper.get_commanded_position()
+            pos += self._unsynced_extruder(extruder)
+        return pos
+
+
+    def hold_position(self):
+        """
+        Fix the live position where the filament now is, until the next MMU command moves it
+        """
+        self._held_position = self.get_filament_position()
+
+
+    def held_position(self):
+        if self._held_position is None:
+            self.hold_position()
+        return self._held_position
+
+
+    def reset_extruder_anchor(self):
+        """
+        Forget extruder movement made while unsynced: the filament position has been set
+        """
+        self._extruder_anchor = None
+
+
+    def _unsynced_extruder(self, extruder_pos):
+        """
+        Filament the extruder has moved by itself (G1 E in a macro, say) since it was unsynced
+        """
+        if self._sync_mode != DRIVE_UNSYNCED:
+            return 0.
+        if self._extruder_anchor is None:
+            self._extruder_anchor = self.mmu_extruder_stepper.stepper.get_commanded_position()
+        return extruder_pos - self._extruder_anchor
 
 
     def get_live_filament_position(self):

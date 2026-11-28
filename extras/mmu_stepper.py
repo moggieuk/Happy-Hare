@@ -668,13 +668,22 @@ class MmuStepper(ExtruderStepper):
             leader = self.printer.lookup_object(self.manual_motion_queue, None)
             if leader is not None and isinstance(leader, MmuStepper):
                 source = leader
-        stepper = source.stepper
+        pos = source.get_live_stepper_position(eventtime)
+        if pos is None:
+            return self.get_mode_position()
+        return pos if self.motion_mode == self.MODE_MANUAL else pos - self._mode_pos_offset
+
+
+    def get_live_stepper_position(self, eventtime):
+        """
+        The stepper's own commanded position at eventtime, None before the MCU clock is known
+        """
+        stepper = self.stepper
         mcu = stepper.get_mcu()
         print_time = mcu.estimated_print_time(eventtime)
         if mcu.print_time_to_clock(print_time) < 0:
-            return self.get_mode_position()
-        pos = stepper.mcu_to_commanded_position(stepper.get_past_mcu_position(print_time))
-        return pos if self.motion_mode == self.MODE_MANUAL else pos - self._mode_pos_offset
+            return None
+        return stepper.mcu_to_commanded_position(stepper.get_past_mcu_position(print_time))
 
 
     # ----------------------------------------------------------------------
